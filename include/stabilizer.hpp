@@ -18,6 +18,12 @@ struct Transformation {
     cv::Mat H;
     uint64_t from_frame_idx;
     uint64_t to_frame_idx;
+    
+    Transformation inverse() const {
+        cv::Mat inv;
+        cv::invert(H, inv);
+        return Transformation{inv, to_frame_idx, from_frame_idx};
+    }
 };
 
 struct Frame {

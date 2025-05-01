@@ -74,13 +74,14 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     cv::Mat gray;
     cv::cvtColor(resizedFrame, gray, cv::COLOR_BGR2GRAY);
 
-    cv::Mat T_stabilize = cv::Mat::eye(3, 3, CV_64F);
+    cv::Mat H_stabilize = cv::Mat::eye(3, 3, CV_64F);
     const size_t MIN_RELIABLE_POINTS = 10;
     const int MAX_FEATURES_TO_DETECT = 200;
     const double QUALITY_LEVEL = 0.01;
     const int MIN_DISTANCE = static_cast<int>(30 * scaleFactor_); // Scale min distance proportionally
 
-    if (prevGray_.empty()) {
+    // --- First ever Frame in the video ---
+    if (prevGray_.empty()) { // run only once
         auto start_gftt = std::chrono::high_resolution_clock::now();
         cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
         auto end_gftt = std::chrono::high_resolution_clock::now();
@@ -92,7 +93,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         return frame;
     }
 
-    // --- Track Features
+    // --- Track Features in images
     std::vector<cv::Point2f> currPoints;
     std::vector<uchar> status;
     std::vector<float> err;
@@ -136,8 +137,8 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
 
     } // else: tracked_count remains 0 if prevPoints_ was empty
 
-    // --- Compute H_k,k-1 (H_curr_prev) using points ---
-    cv::Mat H_curr_prev = cv::Mat::eye(3, 3, CV_64F);
+    // --- Compute transformation from previous frame to current frame using tracked points ---
+    cv::Mat H_prev2curr = cv::Mat::eye(3, 3, CV_64F);
     bool H_computed_reliably = false;
 
     if (tracked_count >= MIN_RELIABLE_POINTS) {
@@ -155,16 +156,16 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
              // H = [ M_row1 ]
              //     [ M_row2 ]
              //     [ 0  0  1 ]
-             H_curr_prev = cv::Mat::eye(3, 3, CV_64F);
-             M.copyTo(H_curr_prev(cv::Rect(0, 0, 3, 2)));
+             H_prev2curr = cv::Mat::eye(3, 3, CV_64F);
+             M.copyTo(H_prev2curr(cv::Rect(0, 0, 3, 2)));
              H_computed_reliably = true;
         }
     }
-    // If tracking failed or transform invalid, H_curr_prev remains Identity
+    // If tracking failed or transform invalid, H_prev2curr remains Identity
 
     // --- Update transformations in the StabilizationWindow ---
     Transformation current_transform;
-    current_transform.H = H_curr_prev.clone();
+    current_transform.H = H_prev2curr.clone();
 
     assert(current_idx >= 1);
     current_transform.from_frame_idx = current_idx - 1;
@@ -178,32 +179,55 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     
     assert(stabilizationWindow_.transformations.size() == stabilizationWindow_.frames.size() - 1);
 
-    // --- Calculate Stabilization Transform T_stabilize ---
-    if (stabilizationWindow_.transformations.size() == smoothingWindowSize_ - 1) {
-        cv::Mat H_curr_oldest = cv::Mat::eye(3, 3, CV_64F);
-        for (int i = stabilizationWindow_.transformations.size() - 1; i >= 0; --i) {
-            H_curr_oldest = H_curr_oldest * stabilizationWindow_.transformations[i].H;
-        }
+    // --- Calculate Stabilization Transform H_stabilize ---
 
-        cv::Mat T_inv = H_curr_oldest.inv();
-        if (!T_inv.empty() && cv::checkRange(T_inv)) {
-             T_stabilize = T_inv;
+    // How it works:
+    // From current frame, go back in time, and compute a corrective transformation that is
+    // the average of all tranformations in the stabilization window between current frame and each of the previous frames.
+    // This is a simple and effective way to stabilize the video by correcting for camera movement.
+    if (stabilizationWindow_.transformations.size() == smoothingWindowSize_ - 1) {
+        // Initialize transformation accumulator
+        cv::Mat H_avg = cv::Mat::zeros(3, 3, CV_64F);
+        int count = 0;
+        
+        // Initialize cumulative transformation matrix (identity)
+        cv::Mat H_accum = cv::Mat::eye(3, 3, CV_64F);
+        
+        // Single loop to calculate all transformations
+        for (int i = stabilizationWindow_.transformations.size() - 1; i >= 0; --i) {
+            // Update cumulative transformation
+            Transformation T_inv = stabilizationWindow_.transformations[i].inverse();
+            H_accum = T_inv.H * H_accum;
+            
+            // Add to average
+            H_avg += H_accum;
+            count++;
+        }
+        
+        // Calculate average transformation
+        if (count > 0) {
+            H_avg = H_avg / count;
+            
+            // Check if average transformation is valid
+            if (!H_avg.empty() && cv::checkRange(H_avg)) {
+                H_stabilize = H_avg;
+            }
         }
     }
 
     // --- Scale the transform matrix to original resolution ---
-    cv::Mat T_stabilize_scaled = T_stabilize.clone();
+    cv::Mat H_stabilize_scaled = H_stabilize.clone();
     if (scaleFactor_ != 1.0) {
         // Adjust translation components
-        T_stabilize_scaled.at<double>(0, 2) /= scaleFactor_;
-        T_stabilize_scaled.at<double>(1, 2) /= scaleFactor_;
+        H_stabilize_scaled.at<double>(0, 2) /= scaleFactor_;
+        H_stabilize_scaled.at<double>(1, 2) /= scaleFactor_;
     }
 
     // --- Warp the original frame ---
     cv::Mat stabilized;
-    if (!T_stabilize_scaled.empty() && cv::checkRange(T_stabilize_scaled)) {
+    if (!H_stabilize_scaled.empty() && cv::checkRange(H_stabilize_scaled)) {
         auto start_warp = std::chrono::high_resolution_clock::now();
-        cv::warpPerspective(frame, stabilized, T_stabilize_scaled, frame.size());
+        cv::warpPerspective(frame, stabilized, H_stabilize_scaled, frame.size());
         auto end_warp = std::chrono::high_resolution_clock::now();
         auto duration_ms_warp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_warp - start_warp);
         warp_call_count_++;
