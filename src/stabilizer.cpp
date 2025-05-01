@@ -11,10 +11,9 @@
 #include <chrono>   // Include chrono for timing
 
 
-Stabilizer::Stabilizer(size_t windowSize)
-    : smoothingWindowSize_(windowSize)
+Stabilizer::Stabilizer(size_t windowSize, int workingHeight)
+    : smoothingWindowSize_(windowSize), workingHeight_(workingHeight), scaleFactor_(1.0)
 {
-    if (smoothingWindowSize_ < 2) smoothingWindowSize_ = 2;
     reset();
     last_print_time_ = std::chrono::high_resolution_clock::now();
 }
@@ -23,6 +22,9 @@ void Stabilizer::reset() {
     prevGray_ = cv::Mat();
     prevPoints_.clear();
     H_window_.clear();
+    originalSize_ = cv::Size(0, 0);
+    workingSize_ = cv::Size(0, 0);
+    scaleFactor_ = 1.0;
 
     // Reset timing variables
     gftt_avg_duration_ms_ = std::chrono::duration<double, std::milli>(0.0);
@@ -36,16 +38,31 @@ void Stabilizer::reset() {
 }
 
 cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
+    // Store original size if first frame or size has changed
+    if (originalSize_.width != frame.cols || originalSize_.height != frame.rows) {
+        originalSize_ = frame.size();
+        // Calculate working size maintaining aspect ratio
+        scaleFactor_ = static_cast<double>(workingHeight_) / frame.rows;
+        workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), workingHeight_);
+    }
+
+    // Resize the input frame to working resolution
+    cv::Mat resizedFrame;
+    cv::resize(frame, resizedFrame, workingSize_, 0, 0, cv::INTER_LINEAR);
+
+    // Convert to grayscale
     cv::Mat gray;
-    cv::cvtColor(frame, gray, cv::COLOR_BGR2GRAY);
+    cv::cvtColor(resizedFrame, gray, cv::COLOR_BGR2GRAY);
 
     cv::Mat T_stabilize = cv::Mat::eye(3, 3, CV_64F);
     const size_t MIN_RELIABLE_POINTS = 10;
     const int MAX_FEATURES_TO_DETECT = 200;
+    const double QUALITY_LEVEL = 0.01;
+    const int MIN_DISTANCE = static_cast<int>(30 * scaleFactor_); // Scale min distance proportionally
 
     if (prevGray_.empty()) {
         auto start_gftt = std::chrono::high_resolution_clock::now();
-        cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, 0.01, 30);
+        cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
         auto end_gftt = std::chrono::high_resolution_clock::now();
         auto duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_gftt - start_gftt);
         gftt_call_count_++;
@@ -145,11 +162,19 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         }
     }
 
-    // --- Warp ---
+    // --- Scale the transform matrix to original resolution ---
+    cv::Mat T_stabilize_scaled = T_stabilize.clone();
+    if (scaleFactor_ != 1.0) {
+        // Adjust translation components
+        T_stabilize_scaled.at<double>(0, 2) /= scaleFactor_;
+        T_stabilize_scaled.at<double>(1, 2) /= scaleFactor_;
+    }
+
+    // --- Warp the original frame ---
     cv::Mat stabilized;
-    if (!T_stabilize.empty() && cv::checkRange(T_stabilize)) {
+    if (!T_stabilize_scaled.empty() && cv::checkRange(T_stabilize_scaled)) {
         auto start_warp = std::chrono::high_resolution_clock::now();
-        cv::warpPerspective(frame, stabilized, T_stabilize, frame.size());
+        cv::warpPerspective(frame, stabilized, T_stabilize_scaled, frame.size());
         auto end_warp = std::chrono::high_resolution_clock::now();
         auto duration_ms_warp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_warp - start_warp);
         warp_call_count_++;
@@ -159,18 +184,14 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
 
     // --- Prepare for Next Frame
-    if (H_computed_reliably) {
-        // Use the successfully tracked points from LK
-        prevPoints_ = currPoints;
-    } else {
-        // Re-detect features on the current frame using GFTT
-        auto start_gftt = std::chrono::high_resolution_clock::now();
-        cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, 0.01, 30);
-        auto end_gftt = std::chrono::high_resolution_clock::now();
-        auto duration_ms_gftt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_gftt - start_gftt);
-        gftt_call_count_++;
-        gftt_avg_duration_ms_ += (duration_ms_gftt - gftt_avg_duration_ms_) / gftt_call_count_;
-    }
+    // Always detect features on the current frame using GFTT
+    auto start_gftt = std::chrono::high_resolution_clock::now();
+    cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
+    auto end_gftt = std::chrono::high_resolution_clock::now();
+    auto duration_ms_gftt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_gftt - start_gftt);
+    gftt_call_count_++;
+    gftt_avg_duration_ms_ += (duration_ms_gftt - gftt_avg_duration_ms_) / gftt_call_count_;
+    
     gray.copyTo(prevGray_); // Update previous gray image
 
     // --- Print Timings Periodically ---
@@ -178,6 +199,8 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     auto elapsed_since_print = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print_time_);
     if (elapsed_since_print >= print_interval_) {
         std::cout << "--- Timing Averages (ms) ---" << std::endl;
+        std::cout << "  Working resolution: " << workingSize_.width << "x" << workingSize_.height 
+                  << " (scale: " << scaleFactor_ << ")" << std::endl;
         if (gftt_call_count_ > 0) {
             std::cout << "  goodFeaturesToTrack: " << gftt_avg_duration_ms_.count()
                       << " ms (calls: " << gftt_call_count_ << ")" << std::endl;

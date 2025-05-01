@@ -16,7 +16,7 @@ enum class StabilizationMode {
 
 class Stabilizer {
 public:
-    Stabilizer(size_t windowSize = 15);
+    Stabilizer(size_t windowSize = 15, int workingHeight = 360);
     
     // Process a frame and return the stabilized version
     cv::Mat stabilizeFrame(const cv::Mat& frame);
@@ -26,6 +26,10 @@ public:
 
 private:
     size_t smoothingWindowSize_;
+    int workingHeight_; // Target height for internal processing
+    double scaleFactor_; // Scale factor between original and working resolution
+    cv::Size originalSize_; // Original frame size
+    cv::Size workingSize_; // Working frame size
     std::deque<cv::Mat> H_window_; // Stores last N-1 H_k,k-1 matrices (or identity)
     cv::Mat prevGray_;
     std::vector<cv::Point2f> prevPoints_;
