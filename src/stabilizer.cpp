@@ -21,7 +21,9 @@ Stabilizer::Stabilizer(size_t windowSize, int workingHeight)
 void Stabilizer::reset() {
     prevGray_ = cv::Mat();
     prevPoints_.clear();
-    H_window_.clear();
+    stabilizationWindow_.transformations.clear();
+    stabilizationWindow_.frames.clear();
+    stabilizationWindow_.current_frame_idx = 0;
     originalSize_ = cv::Size(0, 0);
     workingSize_ = cv::Size(0, 0);
     scaleFactor_ = 1.0;
@@ -38,12 +40,30 @@ void Stabilizer::reset() {
 }
 
 cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
+
     // Store original size if first frame or size has changed
     if (originalSize_.width != frame.cols || originalSize_.height != frame.rows) {
         originalSize_ = frame.size();
         // Calculate working size maintaining aspect ratio
         scaleFactor_ = static_cast<double>(workingHeight_) / frame.rows;
         workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), workingHeight_);
+    }
+
+    // Increment frame index
+    uint64_t current_idx = 0;
+    if (!stabilizationWindow_.frames.empty()) {
+        current_idx = stabilizationWindow_.frames.back().frame_idx + 1;
+    }
+    
+    // Store the current frame
+    Frame currentFrame;
+    currentFrame.image = frame.clone();
+    currentFrame.frame_idx = current_idx;
+    stabilizationWindow_.frames.push_back(currentFrame);
+    
+    // Keep only the necessary frames
+    while (stabilizationWindow_.frames.size() > smoothingWindowSize_) {
+        stabilizationWindow_.frames.pop_front();
     }
 
     // Resize the input frame to working resolution
@@ -127,7 +147,6 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         cv::Mat M = cv::estimateAffinePartial2D(prevPoints_, currPoints, cv::noArray(), cv::RANSAC); // function with unfortunate name. This is actually Euclidean transform estimation.
         auto end_motion_estimation = std::chrono::high_resolution_clock::now();
         auto duration_ms_motion = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_motion_estimation - start_motion_estimation);
-        // Note: Reusing homography timing variables for simplicity, rename if needed.
         homography_call_count_++;
         homography_avg_duration_ms_ += (duration_ms_motion - homography_avg_duration_ms_) / homography_call_count_;
 
@@ -143,17 +162,27 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
     // If tracking failed or transform invalid, H_curr_prev remains Identity
 
-    // --- Update Rolling Window ---
-    H_window_.push_back(H_curr_prev);
-    while (H_window_.size() > smoothingWindowSize_ - 1) {
-        H_window_.pop_front();
+    // --- Update transformations in the StabilizationWindow ---
+    Transformation current_transform;
+    current_transform.H = H_curr_prev.clone();
+
+    assert(current_idx >= 1);
+    current_transform.from_frame_idx = current_idx - 1;
+    current_transform.to_frame_idx = current_idx;
+    stabilizationWindow_.transformations.push_back(current_transform);
+
+    // Keep only necessary transformations
+    while (stabilizationWindow_.transformations.size() > smoothingWindowSize_ - 1) {
+        stabilizationWindow_.transformations.pop_front();
     }
+    
+    assert(stabilizationWindow_.transformations.size() == stabilizationWindow_.frames.size() - 1);
 
     // --- Calculate Stabilization Transform T_stabilize ---
-    if (H_window_.size() == smoothingWindowSize_ - 1) {
+    if (stabilizationWindow_.transformations.size() == smoothingWindowSize_ - 1) {
         cv::Mat H_curr_oldest = cv::Mat::eye(3, 3, CV_64F);
-        for (int i = H_window_.size() - 1; i >= 0; --i) {
-            H_curr_oldest = H_curr_oldest * H_window_[i];
+        for (int i = stabilizationWindow_.transformations.size() - 1; i >= 0; --i) {
+            H_curr_oldest = H_curr_oldest * stabilizationWindow_.transformations[i].H;
         }
 
         cv::Mat T_inv = H_curr_oldest.inv();

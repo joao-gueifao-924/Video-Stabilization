@@ -14,6 +14,23 @@ enum class StabilizationMode {
     GLOBAL_SMOOTHING
 };
 
+struct Transformation {
+    cv::Mat H;
+    uint64_t from_frame_idx;
+    uint64_t to_frame_idx;
+};
+
+struct Frame {
+    cv::Mat image;
+    uint64_t frame_idx;
+};
+
+struct StabilizationWindow {
+    std::deque<Transformation> transformations;
+    std::deque<Frame> frames;
+    uint64_t current_frame_idx{0};
+};
+
 class Stabilizer {
 public:
     Stabilizer(size_t windowSize = 15, int workingHeight = 360);
@@ -30,7 +47,9 @@ private:
     double scaleFactor_; // Scale factor between original and working resolution
     cv::Size originalSize_; // Original frame size
     cv::Size workingSize_; // Working frame size
-    std::deque<cv::Mat> H_window_; // Stores last N-1 H_k,k-1 matrices (or identity)
+    
+    StabilizationWindow stabilizationWindow_; // Single instance of StabilizationWindow
+    
     cv::Mat prevGray_;
     std::vector<cv::Point2f> prevPoints_;
 
