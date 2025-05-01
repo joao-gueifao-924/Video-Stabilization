@@ -15,7 +15,7 @@ Stabilizer::Stabilizer(size_t windowSize, int workingHeight)
     : smoothingWindowSize_(windowSize), workingHeight_(workingHeight), scaleFactor_(1.0)
 {
     reset();
-    last_print_time_ = std::chrono::high_resolution_clock::now();
+    last_print_time_ = now();
 }
 
 void Stabilizer::reset() {
@@ -29,13 +29,13 @@ void Stabilizer::reset() {
     scaleFactor_ = 1.0;
 
     // Reset timing variables
-    gftt_avg_duration_ms_ = std::chrono::duration<double, std::milli>(0.0);
+    gftt_avg_duration_ms_ = milli_duration(0.0);
     gftt_call_count_ = 0;
-    lk_avg_duration_ms_ = std::chrono::duration<double, std::milli>(0.0);
+    lk_avg_duration_ms_ = milli_duration(0.0);
     lk_call_count_ = 0;
-    homography_avg_duration_ms_ = std::chrono::duration<double, std::milli>(0.0);
+    homography_avg_duration_ms_ = milli_duration(0.0);
     homography_call_count_ = 0;
-    warp_avg_duration_ms_ = std::chrono::duration<double, std::milli>(0.0);
+    warp_avg_duration_ms_ = milli_duration(0.0);
     warp_call_count_ = 0;
 }
 
@@ -78,14 +78,14 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     const size_t MIN_RELIABLE_POINTS = 10;
     const int MAX_FEATURES_TO_DETECT = 200;
     const double QUALITY_LEVEL = 0.01;
-    const int MIN_DISTANCE = static_cast<int>(30 * scaleFactor_); // Scale min distance proportionally
+    const int MIN_DISTANCE = static_cast<int>(30 * scaleFactor_);
 
     // --- First ever Frame in the video ---
     if (prevGray_.empty()) { // run only once
-        auto start_gftt = std::chrono::high_resolution_clock::now();
+        auto start_gftt = now();
         cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
-        auto end_gftt = std::chrono::high_resolution_clock::now();
-        auto duration_ms = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_gftt - start_gftt);
+        auto end_gftt = now();
+        auto duration_ms = toMilliseconds(start_gftt, end_gftt);
         gftt_call_count_++;
         gftt_avg_duration_ms_ += (duration_ms - gftt_avg_duration_ms_) / gftt_call_count_;
 
@@ -100,10 +100,10 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     size_t tracked_count = 0;
 
     if (!prevPoints_.empty()) {
-        auto start_lk = std::chrono::high_resolution_clock::now();
+        auto start_lk = now();
         cv::calcOpticalFlowPyrLK(prevGray_, gray, prevPoints_, currPoints, status, err);
-        auto end_lk = std::chrono::high_resolution_clock::now();
-        auto duration_ms_lk = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_lk - start_lk);
+        auto end_lk = now();
+        auto duration_ms_lk = toMilliseconds(start_lk, end_lk);
         lk_call_count_++;
         lk_avg_duration_ms_ += (duration_ms_lk - lk_avg_duration_ms_) / lk_call_count_;
 
@@ -114,7 +114,8 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
                 // In-place filtering
                 if (k < i) { // Avoid self-assignment if k==i
                      // Check bounds before assignment (important for safety)
-                     if (k < prevPoints_.size() && k < currPoints.size() && i < prevPoints_.size() && i < currPoints.size()) {
+                     if (k < prevPoints_.size() && k < currPoints.size() && i < prevPoints_.size() 
+                                                                        && i < currPoints.size()) {
                          prevPoints_[k] = prevPoints_[i];
                          currPoints[k] = currPoints[i];
                      } else {
@@ -142,14 +143,17 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     bool H_computed_reliably = false;
 
     if (tracked_count >= MIN_RELIABLE_POINTS) {
-        auto start_motion_estimation = std::chrono::high_resolution_clock::now();
+        auto start_motion_estimation = now();
         // Estimate Euclidean transform (rigid + isotropic scale) instead of full homography.
         // This is often more robust for shaky video or when perspective distortion is minimal.
-        cv::Mat M = cv::estimateAffinePartial2D(prevPoints_, currPoints, cv::noArray(), cv::RANSAC); // function with unfortunate name. This is actually Euclidean transform estimation.
-        auto end_motion_estimation = std::chrono::high_resolution_clock::now();
-        auto duration_ms_motion = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_motion_estimation - start_motion_estimation);
+        cv::Mat M = cv::estimateAffinePartial2D(prevPoints_, currPoints, cv::noArray(), cv::RANSAC);
+        auto end_motion_estimation = now();
+        
+        auto duration_ms_motion = toMilliseconds(start_motion_estimation, end_motion_estimation);
+                
         homography_call_count_++;
-        homography_avg_duration_ms_ += (duration_ms_motion - homography_avg_duration_ms_) / homography_call_count_;
+        homography_avg_duration_ms_ += 
+            (duration_ms_motion - homography_avg_duration_ms_) / homography_call_count_;
 
         if (!M.empty() && M.rows == 2 && M.cols == 3 && cv::checkRange(M)) {
              // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
@@ -183,10 +187,11 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
 
     // How it works:
     // From current frame, go back in time, and compute a corrective transformation that is
-    // the average of all tranformations in the stabilization window between current frame and each of the previous frames.
+    // the average of all tranformations in the stabilization window between current frame and 
+    // each of the previous frames.
     // This is a simple and effective way to stabilize the video by correcting for camera movement.
     if (stabilizationWindow_.transformations.size() == smoothingWindowSize_ - 1) {
-        // Initialize transformation accumulator
+        // Initialize transformation average and accumulator
         cv::Mat H_avg = cv::Mat::zeros(3, 3, CV_64F);
         int count = 0;
         
@@ -226,10 +231,12 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     // --- Warp the original frame ---
     cv::Mat stabilized;
     if (!H_stabilize_scaled.empty() && cv::checkRange(H_stabilize_scaled)) {
-        auto start_warp = std::chrono::high_resolution_clock::now();
+        auto start_warp = now();
         cv::warpPerspective(frame, stabilized, H_stabilize_scaled, frame.size());
-        auto end_warp = std::chrono::high_resolution_clock::now();
-        auto duration_ms_warp = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_warp - start_warp);
+        auto end_warp = now();
+        
+        auto duration_ms_warp = toMilliseconds(start_warp, end_warp);
+        
         warp_call_count_++;
         warp_avg_duration_ms_ += (duration_ms_warp - warp_avg_duration_ms_) / warp_call_count_;
     } else {
@@ -238,18 +245,17 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
 
     // --- Prepare for Next Frame
     // Always detect features on the current frame using GFTT
-    auto start_gftt = std::chrono::high_resolution_clock::now();
+    auto start_gftt = now();
     cv::goodFeaturesToTrack(gray, prevPoints_, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
-    auto end_gftt = std::chrono::high_resolution_clock::now();
-    auto duration_ms_gftt = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(end_gftt - start_gftt);
+    auto end_gftt = now();
+    auto duration_ms_gftt = toMilliseconds(start_gftt, end_gftt);
     gftt_call_count_++;
     gftt_avg_duration_ms_ += (duration_ms_gftt - gftt_avg_duration_ms_) / gftt_call_count_;
     
     gray.copyTo(prevGray_); // Update previous gray image
 
     // --- Print Timings Periodically ---
-    auto now = std::chrono::high_resolution_clock::now();
-    auto elapsed_since_print = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_print_time_);
+    auto elapsed_since_print = milli_duration(now() - last_print_time_);
     if (elapsed_since_print >= print_interval_) {
         std::cout << "--- Timing Averages (ms) ---" << std::endl;
         std::cout << "  Working resolution: " << workingSize_.width << "x" << workingSize_.height 
@@ -271,7 +277,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
                        << " ms (calls: " << warp_call_count_ << ")" << std::endl;
         }
         std::cout << "----------------------------" << std::endl;
-        last_print_time_ = now;
+        last_print_time_ = now();
     }
 
     return stabilized;

@@ -39,6 +39,14 @@ struct StabilizationWindow {
 
 class Stabilizer {
 public:
+    // Type alias for millisecond duration to simplify code
+    using milli_duration = std::chrono::duration<double, std::milli>;
+    
+    // Helper to get current time more concisely
+    inline auto now() {
+        return std::chrono::high_resolution_clock::now();
+    }
+    
     Stabilizer(size_t windowSize = 15, int workingHeight = 360);
     
     // Process a frame and return the stabilized version
@@ -47,6 +55,12 @@ public:
     // Reset the stabilizer state
     void reset();
 
+    // Helper method to convert duration to milliseconds
+    inline milli_duration toMilliseconds(const std::chrono::high_resolution_clock::time_point& start,
+                                      const std::chrono::high_resolution_clock::time_point& end) {
+        return std::chrono::duration_cast<milli_duration>(end - start);
+    }
+    
 private:
     size_t smoothingWindowSize_;
     int workingHeight_; // Target height for internal processing
@@ -60,13 +74,13 @@ private:
     std::vector<cv::Point2f> prevPoints_;
 
     // Timing variables (rolling averages)
-    std::chrono::duration<double, std::milli> gftt_avg_duration_ms_{0.0};
+    milli_duration gftt_avg_duration_ms_{0.0};
     long long gftt_call_count_{0};
-    std::chrono::duration<double, std::milli> lk_avg_duration_ms_{0.0};
+    milli_duration lk_avg_duration_ms_{0.0};
     long long lk_call_count_{0};
-    std::chrono::duration<double, std::milli> homography_avg_duration_ms_{0.0};
+    milli_duration homography_avg_duration_ms_{0.0};
     long long homography_call_count_{0};
-    std::chrono::duration<double, std::milli> warp_avg_duration_ms_{0.0};
+    milli_duration warp_avg_duration_ms_{0.0};
     long long warp_call_count_{0};
 
     // Timing print variables

@@ -18,8 +18,10 @@ int main(int argc, char** argv) {
     
     // Get original video frame rate
     double fps = cap.get(cv::CAP_PROP_FPS);
-    int frame_period_ms = 1000.0 / fps; // Frame period in milliseconds
-    std::cout << "Original video FPS: " << fps << ", frame period: " << frame_period_ms << "ms" << std::endl;
+    double frame_period_ms = 1000.0 / fps; // Frame period in milliseconds
+    
+    std::cout << "Original video FPS: " << fps << ", frame period: " 
+              << frame_period_ms << "ms" << std::endl;
     
     // Create stabilizer
     const int window_size = 30;
@@ -38,7 +40,7 @@ int main(int argc, char** argv) {
     
     while (cap.read(frame)) {
         // Start timing this frame's processing
-        auto start_time = std::chrono::high_resolution_clock::now();
+        auto start_time = stabilizer.now();
         
         cv::Mat stabilized;
         
@@ -51,11 +53,12 @@ int main(int argc, char** argv) {
         cv::imshow("Stabilized Video", stabilized);
         
         // Calculate elapsed processing time
-        auto end_time = std::chrono::high_resolution_clock::now();
-        auto processing_time_us = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+        auto end_time = stabilizer.now();
+        auto processing_time_ms = stabilizer.toMilliseconds(start_time, end_time);
         
         // Calculate adjusted wait time
-        int wait_time = static_cast<int>(std::max(1.0, frame_period_ms - static_cast<double>(processing_time_us) / 1000.0));
+        int wait_time = static_cast<int>(
+            std::max(1.0, frame_period_ms - processing_time_ms.count()));
         
         // --- Key Presses (with dynamic timing) --- 
         char key = cv::waitKey(wait_time);
