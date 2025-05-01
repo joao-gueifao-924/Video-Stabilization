@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) Launch Video Stabilization",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/video_stabilization",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Set Disassembly Flavor to Intel",
+                    "text": "-gdb-set disassembly-flavor intel",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Suppress library loading messages",
+                    "text": "set print symbol-loading off",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "CMake Build" // Runs the build task before launching
+        }
+    ]
+} 
