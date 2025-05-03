@@ -57,7 +57,9 @@ int main(int argc, char** argv) {
     std::cout << "  r - Rotation lock mode" << std::endl;
     std::cout << "  g - Global smoothing mode (allow slow movements)" << std::endl;
     
-    while (cap.read(frame)) {
+    bool should_quit = false;
+
+    while (cap.read(frame) && !should_quit) {
         // Start timing this frame's processing
         auto start_time = stabilizer.now();
         
@@ -97,6 +99,7 @@ int main(int argc, char** argv) {
             char key = cv::waitKey(wait_time);
             switch (key) {
                 case 'q':
+                    should_quit = true;
                     break;
                 case 'x': // Reset stabilizer
                     stabilizer.reset(); 
@@ -118,7 +121,6 @@ int main(int argc, char** argv) {
                     stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
                     break;
             }
-            // Removed other mode-switching keys (d, f, t, o, g) for now...
         } else {
             // We're still filling the buffer, show processing status
             std::cout << "Buffering frames: " << originalFrameBuffer.size() 

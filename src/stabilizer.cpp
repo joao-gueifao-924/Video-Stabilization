@@ -452,3 +452,140 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     
     return stabilized;
 }
+
+/**
+ * @brief Computes the QR decomposition of a 2x2 matrix using the Gram-Schmidt process.
+ *
+ * Given a 2x2 matrix A, computes matrices Q (orthogonal) and R (upper triangular)
+ * such that A = QR.
+ *
+ * @param A Input 2x2 matrix (must be of type CV_64F).
+ * @param Q Output 2x2 orthogonal matrix (CV_64F).
+ * @param R Output 2x2 upper triangular matrix (CV_64F).
+ * @throws std::invalid_argument if A is not a 2x2 CV_64F matrix.
+ * @throws std::runtime_error if the columns of A are linearly dependent (cannot normalize).
+ */
+void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
+    // --- Input Validation ---
+    if (A.rows != 2 || A.cols != 2) {
+        throw std::invalid_argument("Input matrix A must be 2x2.");
+    }
+    if (A.type() != CV_64F) {
+        throw std::invalid_argument("Input matrix A must be of type CV_64F (double precision).");
+    }
+
+    if (std::abs(cv::determinant(A)) < 1e-6) {
+        throw std::invalid_argument("Input matrix A is singular. QR decomposition requires non-singular matrix.");
+    }
+
+    // --- Initialization ---
+    // Create output matrices with the correct size and type
+    Q = cv::Mat::zeros(2, 2, CV_64F);
+    R = cv::Mat::zeros(2, 2, CV_64F);
+
+    // Get column vectors (creating copies)
+    cv::Mat a1 = A.col(0);
+    cv::Mat a2 = A.col(1);
+
+    // --- Gram-Schmidt Process ---
+
+    const double epsilon = 1e-6;
+
+    // Process first column (a1)
+    double norm_a1 = cv::norm(a1);
+    if (norm_a1 < epsilon) { // Check for zero vector
+        throw std::runtime_error("First column is zero or near-zero. QR decomposition requires linearly independent columns.");
+    }
+    cv::Mat q1 = a1 / norm_a1;
+
+    // Process second column (a2)
+    double r12 = a2.dot(q1); // Projection coefficient: R[0, 1] = q1^T * a2
+    cv::Mat u2 = a2 - r12 * q1; // Orthogonal vector
+    double norm_u2 = cv::norm(u2);
+
+    if (norm_u2 < epsilon) { // Check for linear dependence (a2 is parallel to a1)
+        throw std::runtime_error("Columns are linearly dependent. QR decomposition requires linearly independent columns.");
+    }
+    cv::Mat q2 = u2 / norm_u2;
+
+    // --- Construct Q and R Matrices ---
+
+    // Fill Q matrix with the orthonormal vectors q1 and q2
+    q1.copyTo(Q.col(0));
+    q2.copyTo(Q.col(1));
+
+    // Fill R matrix (upper triangular)
+    R.at<double>(0, 0) = norm_a1; // R[0, 0] = ||a1||
+    R.at<double>(0, 1) = r12;     // R[0, 1] = q1.dot(a2)
+    R.at<double>(1, 0) = 0.0;     // R[1, 0] = 0
+    R.at<double>(1, 1) = norm_u2; // R[1, 1] = ||u2||
+
+    // Assert that QR = A
+    double max_diff_A = cv::norm(A - Q*R, cv::NORM_INF);
+    if (max_diff_A > epsilon) {
+        throw std::runtime_error("QR decomposition failed. Max difference: " + std::to_string(max_diff_A));
+    }
+
+    // Assert that Q is orthogonal
+    cv::Mat Q_test = Q.t() * Q;
+    cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
+    double max_diff_Q = cv::norm(Q_test - I, cv::NORM_INF);
+    if (max_diff_Q > epsilon) {
+        throw std::runtime_error("Q is not orthogonal. Max difference: " + std::to_string(max_diff_Q));
+    }
+
+    // Assert that R is upper triangular
+    R.at<double>(1, 0) = 0.0; // R[1, 0] should be 0
+}
+
+
+HomographyParameters Stabilizer::decomposeHomography(const cv::Mat& H) {
+    if (H.empty() || H.rows != 3 || H.cols != 3 || H.type() != CV_64F) {
+        throw std::invalid_argument("Error: Input homography matrix must be a non-empty 3x3 CV_64F matrix.");
+    }
+
+    const double epsilon = 1e-6;
+
+    // Normalize H such that H(2, 2) = 1
+    double h33 = H.at<double>(2, 2);
+    if (std::abs(h33) < epsilon) {
+        throw std::invalid_argument("Error: H(2, 2) is close to zero. Degenerate homography.");
+    }
+    cv::Mat H_norm = H / h33;
+
+    // Extract translation vector t = [tx, ty] and projective vector v = [v1, v2]
+    cv::Mat t = H_norm(cv::Rect(2, 0, 1, 2));
+    cv::Mat v = H_norm(cv::Rect(0, 0, 2, 1));
+
+    // Extract A matrix from H_norm
+    cv::Mat A = H_norm(cv::Rect(0, 0, 2, 2));
+
+    // Extract RK matrix and scaling factor s from A
+    cv::Mat sRK = A - t * v.t();
+    double s = std::sqrt(cv::determinant(sRK)); // sqrt because A is 2x2 matrix
+
+    if (std::abs(s) < epsilon) {
+        throw std::invalid_argument("Error: Scaling factor s is close to zero. Degenerate homography.");
+    }
+    cv::Mat RK = sRK / s;
+
+    // Extrac R and K from RK using QR-decomposition
+    // They are both 2x2 matrices, and there is a closed-form solution for them
+    // R = [cos(theta) -sin(theta); sin(theta) cos(theta)], det(R) = 1, R is a rotation matrix, R^T = R^-1
+    // K = [k1 d; 0 k2], k1*k2 = det(K) = 1, K is a upper triangular matrix
+    cv::Mat R, K;
+    qrDecomposition2x2(RK, R, K);
+
+    // Extract angle theta from R
+    double cos_theta = (R.at<double>(0, 0) + R.at<double>(1, 1)) / 2;
+    double sin_theta = (R.at<double>(1, 0) - R.at<double>(0, 1)) / 2;
+    double theta = std::atan2(sin_theta, cos_theta);
+    
+    // Extract k,delta from K
+    double k1 = K.at<double>(0, 0);
+    double k2 = K.at<double>(1, 1);
+    double k = k1/k2;
+    double delta = K.at<double>(0, 1);
+
+    return HomographyParameters{s, theta, k, delta, t, v};
+}
