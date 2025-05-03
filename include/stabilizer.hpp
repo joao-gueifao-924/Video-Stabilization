@@ -54,6 +54,9 @@ public:
     // Reset the stabilizer state
     void reset();
 
+    // Set stabilization mode
+    void setStabilizationMode(StabilizationMode mode);
+
     inline size_t totalFrameWindowSize() const {
         return totalPastFrames_ + 1 + totalFutureFrames_;
     }
@@ -79,6 +82,8 @@ private:
 
     cv::Mat trail_background_; // Background for the trail effect
 
+    Transformation accumulatedTransform_; // Store the accumulated transformation for full lock mode
+
     // Timing variables (rolling averages)
     milli_duration gftt_avg_duration_ms_{0.0};
     long long gftt_call_count_{0};
@@ -88,6 +93,7 @@ private:
     long long homography_call_count_{0};
     milli_duration warp_avg_duration_ms_{0.0};
     long long warp_call_count_{0};
+    StabilizationMode stabilizationMode_{StabilizationMode::GLOBAL_SMOOTHING};
 
     // Timing print variables
     std::chrono::high_resolution_clock::time_point last_print_time_;

@@ -48,6 +48,13 @@ int main(int argc, char** argv) {
     cv::namedWindow(ORIGINAL_WINDOW_TITLE, cv::WINDOW_KEEPRATIO);
     cv::namedWindow(STABILIZED_WINDOW_TITLE, cv::WINDOW_KEEPRATIO);
     
+    // Display help information
+    std::cout << "Keyboard controls:" << std::endl;
+    std::cout << "  q - Quit" << std::endl;
+    std::cout << "  r - Reset stabilizer" << std::endl;
+    std::cout << "  f - Full lock mode (freeze frame)" << std::endl;
+    std::cout << "  g - Global smoothing mode (allow slow movements)" << std::endl;
+    
     while (cap.read(frame)) {
         // Start timing this frame's processing
         auto start_time = stabilizer.now();
@@ -94,6 +101,10 @@ int main(int argc, char** argv) {
                 originalFrameBuffer.clear();
                 // tracker.reset();
                 // trackerInitialized = false;
+            } else if (key == 'f') {
+                stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
+            } else if (key == 'g') {
+                stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
             }
             // Removed other mode-switching keys (d, f, t, o, g) for now...
         } else {

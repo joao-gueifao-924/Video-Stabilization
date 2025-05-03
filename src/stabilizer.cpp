@@ -13,7 +13,7 @@
 
 Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight)
     : totalPastFrames_(pastFrames), totalFutureFrames_(futureFrames), 
-      workingHeight_(workingHeight), scaleFactor_(1.0), trail_background_()
+      workingHeight_(workingHeight)
 {
     reset();
     last_print_time_ = now();
@@ -38,6 +38,20 @@ void Stabilizer::reset() {
     homography_call_count_ = 0;
     warp_avg_duration_ms_ = milli_duration(0.0);
     warp_call_count_ = 0;
+    accumulatedTransform_ = Transformation();
+    stabilizationMode_ = StabilizationMode::GLOBAL_SMOOTHING;
+}
+
+void Stabilizer::setStabilizationMode(StabilizationMode mode) {
+    if (stabilizationMode_ != mode) {
+        if (mode == StabilizationMode::FULL_LOCK) {
+            // Reset the accumulated transform when switching to FULL_LOCK mode
+            accumulatedTransform_ = Transformation();
+        }
+        stabilizationMode_ = mode;
+        std::cout << "Stabilization mode changed to: " << 
+            (mode == StabilizationMode::FULL_LOCK ? "FULL_LOCK" : "GLOBAL_SMOOTHING") << std::endl;
+    }
 }
 
 cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
@@ -198,74 +212,95 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
     
     assert(stabilizationWindow_.transformations.size() == stabilizationWindow_.frames.size() - 1);
-
-    // --- Calculate Stabilization Transform H_stabilize ---
-
-    // How it works:
-    // From frame to be presented next to the user (presentation_frame), compute a corrective transformation that is
-    // the average of all tranformations in the stabilization window between presentation_frame and 
-    // each of the previous frames and between presentation_frame and each of the future frames.
-    // Remember that presentation_frame is somewhere in the middle of the stabilization window.
-    // This is a simple and effective way to stabilize the video by correcting for camera movement.
-    // Especially during premature execution of the program or after a stabilization reset() operation, 
-    // the total frames inserted in the stabilization window might be less than the totalWindowSize().
-    // We accomodate for this dynamic total of available frames for stabilization.
-
-    // Initialize transformation average and accumulator
-    cv::Mat H_avg = cv::Mat::zeros(3, 3, CV_64F);
-    int count = 0;
-    
-    // Initialize cumulative transformation matrix (identity)
-    cv::Mat H_accum = cv::Mat::eye(3, 3, CV_64F);
-
-    // Find presentation_frame, given totalPastFrames_, totalFutureFrames_ and the current number
-    // of frames and transformations available in the stabilizationWindow_.
-    // If the number of available frames in stabilizationWindow_ is totalFutureFrames_ or less, presentation_frame will be
-    // the frame most to the left (oldest) and use all frames to its right to compute H_avg.
-    // When the number of available frames in stabilizationWindow_ becomes bigger than totalFutureFrames_, presentation_frame will be
-    // somewhere in the middle of stabilizationWindow_, depending on how many past frames are available to the left of presentation_frame.
     size_t presentation_frame_idx = 0;
-    if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
-        presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
-    }
-    
-    // Calculate all transformations from presentation_frame to each of the older frames, if any
-    for (int i = presentation_frame_idx; i > 0; --i) {
-        // Update cumulative transformation
-        size_t transformation_idx = i - 1;
-        // the transformation is defined from previous frame to next frame, hence the inverse
-        Transformation T_inv = stabilizationWindow_.transformations[transformation_idx].inverse();
-        H_accum = T_inv.H * H_accum; // left matrix multiplication
+    switch (stabilizationMode_) {
+        case StabilizationMode::FULL_LOCK:
+            presentation_frame_idx = stabilizationWindow_.frames.size() - 1; // most recent frame
+            // --- Calculate Stabilization Transform H_stabilize ---
 
-        // Add to average
-        H_avg += H_accum;
-        count++;
-    }
+            // If the this iteration is the first time we are computing the stabilization transform, use the identity matrix
+            if (accumulatedTransform_.H.empty()) {
+                accumulatedTransform_.H = cv::Mat::eye(3, 3, CV_64F);
+                accumulatedTransform_.from_frame_idx = stabilizationWindow_.frames.back().frame_idx;
+                accumulatedTransform_.to_frame_idx = accumulatedTransform_.from_frame_idx;
+            }
 
-    // Reinitialize cumulative transformation matrix (identity)
-    H_accum = cv::Mat::eye(3, 3, CV_64F);
+            // update the accumulated transform by multiplying it with the transformation from the penultimate frame to the most recent frame
+            accumulatedTransform_.H = accumulatedTransform_.H * current_transform.H;
+            // Use the accumulated transform to stabilize the frame
+            H_stabilize = accumulatedTransform_.H.inv();
+            break;
+        case StabilizationMode::GLOBAL_SMOOTHING:
+            // --- Calculate Stabilization Transform H_stabilize ---
 
-    // Calculate all transformations from presentation_frame to each of the newer frames, if any.
-    for (int i = presentation_frame_idx; i < stabilizationWindow_.transformations.size() - 1; ++i) {
-        // Update cumulative transformation
-        size_t transformation_idx = i;
-        // the transformation is defined from previous frame to next frame, hence no need to invert here
-        Transformation T_inv = stabilizationWindow_.transformations[transformation_idx];
-        H_accum = H_accum * T_inv.H; // right matrix multiplication
+            // How it works:
+            // From frame to be presented next to the user (presentation_frame), compute a corrective transformation that is
+            // the average of all tranformations in the stabilization window between presentation_frame and 
+            // each of the previous frames and between presentation_frame and each of the future frames.
+            // Remember that presentation_frame is somewhere in the middle of the stabilization window.
+            // This is a simple and effective way to stabilize the video by correcting for camera movement.
+            // Especially during premature execution of the program or after a stabilization reset() operation, 
+            // the total frames inserted in the stabilization window might be less than the totalWindowSize().
+            // We accomodate for this dynamic total of available frames for stabilization.
 
-        // Add to average
-        H_avg += H_accum;
-        count++;
-    }
-        
-    // Calculate average transformation
-    if (count > 0) {
-        H_avg = H_avg / count;
-        
-        // Check if average transformation is valid
-        if (!H_avg.empty() && cv::checkRange(H_avg)) {
-            H_stabilize = H_avg;
-        }
+            // Initialize transformation average and accumulator
+            cv::Mat H_avg = cv::Mat::zeros(3, 3, CV_64F);
+            int count = 0;
+            
+            // Initialize cumulative transformation matrix (identity)
+            cv::Mat H_accum = cv::Mat::eye(3, 3, CV_64F);
+
+            // Find presentation_frame, given totalPastFrames_, totalFutureFrames_ and the current number
+            // of frames and transformations available in the stabilizationWindow_.
+            // If the number of available frames in stabilizationWindow_ is totalFutureFrames_ or less, presentation_frame will be
+            // the frame most to the left (oldest) and use all frames to its right to compute H_avg.
+            // When the number of available frames in stabilizationWindow_ becomes bigger than totalFutureFrames_, presentation_frame will be
+            // somewhere in the middle of stabilizationWindow_, depending on how many past frames are available to the left of presentation_frame.
+            
+            if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
+                presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
+            }
+            
+            // Calculate all transformations from presentation_frame to each of the older frames, if any
+            for (int i = presentation_frame_idx; i > 0; --i) {
+                // Update cumulative transformation
+                size_t transformation_idx = i - 1;
+                // the transformation is defined from previous frame to next frame, hence the inverse
+                Transformation T_inv = stabilizationWindow_.transformations[transformation_idx].inverse();
+                H_accum = T_inv.H * H_accum; // left matrix multiplication
+
+                // Add to average
+                H_avg += H_accum;
+                count++;
+            }
+
+            // Reinitialize cumulative transformation matrix (identity)
+            H_accum = cv::Mat::eye(3, 3, CV_64F);
+
+            // Calculate all transformations from presentation_frame to each of the newer frames, if any.
+            for (int i = presentation_frame_idx; i < stabilizationWindow_.transformations.size() - 1; ++i) {
+                // Update cumulative transformation
+                size_t transformation_idx = i;
+                // the transformation is defined from previous frame to next frame, hence no need to invert here
+                Transformation T_inv = stabilizationWindow_.transformations[transformation_idx];
+                H_accum = H_accum * T_inv.H; // right matrix multiplication
+
+                // Add to average
+                H_avg += H_accum;
+                count++;
+            }
+                
+            // Calculate average transformation
+            if (count > 0) {
+                H_avg = H_avg / count;
+                
+                // Check if average transformation is valid
+                if (!H_avg.empty() && cv::checkRange(H_avg)) {
+                    H_stabilize = H_avg;
+                }
+            }
+
+            break;
     }
 
     // --- Scale the transform matrix to original resolution ---
@@ -319,7 +354,6 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         warp_call_count_++;
         warp_avg_duration_ms_ += (duration_ms_warp - warp_avg_duration_ms_) / warp_call_count_;
     } else {
-
          frame.copyTo(stabilized);
     }
 
