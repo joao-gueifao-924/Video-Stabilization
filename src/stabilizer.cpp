@@ -44,10 +44,9 @@ void Stabilizer::reset() {
 
 void Stabilizer::setStabilizationMode(StabilizationMode mode) {
     if (stabilizationMode_ != mode) {
-        if (mode == StabilizationMode::FULL_LOCK) {
-            // Reset the accumulated transform when switching to FULL_LOCK mode
-            accumulatedTransform_ = Transformation();
-        }
+        // Reset the accumulated transform when switching to any mode
+        accumulatedTransform_ = Transformation();
+
         stabilizationMode_ = mode;
         std::cout << "Stabilization mode changed to: ";
         switch (mode) {
@@ -203,16 +202,24 @@ void Stabilizer::updateTransformations(const cv::Mat& H_prev2curr, uint64_t curr
     }
 }
 
-cv::Mat Stabilizer::calculateFullLockStabilization(const Transformation& current_transform) {
-    // If the this iteration is the first time we are computing the stabilization transform, use the identity matrix
+cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx) {
+    size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
+
+    // If this iteration is the first time we are computing the stabilization transform, use the identity matrix
     if (accumulatedTransform_.H.empty()) {
         accumulatedTransform_.H = cv::Mat::eye(3, 3, CV_64F);
-        accumulatedTransform_.from_frame_idx = stabilizationWindow_.frames.back().frame_idx;
-        accumulatedTransform_.to_frame_idx = accumulatedTransform_.from_frame_idx;
+        accumulatedTransform_.from_frame_idx = frame_idx;
+        accumulatedTransform_.to_frame_idx = frame_idx;
+    }
+    else {
+        Transformation next_transform = stabilizationWindow_.transformations[presentation_frame_idx -1];
+        assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
+
+        // update the accumulated transform by multiplying it with the transformation
+        accumulatedTransform_.H = accumulatedTransform_.H * next_transform.H;
+        accumulatedTransform_.to_frame_idx = next_transform.to_frame_idx;
     }
 
-    // update the accumulated transform by multiplying it with the transformation
-    accumulatedTransform_.H = accumulatedTransform_.H * current_transform.H;
     // Use the accumulated transform to stabilize the frame
     return accumulatedTransform_.H.inv();
 }
@@ -395,37 +402,31 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     // Update transformations window
     updateTransformations(H_prev2curr, current_idx);
     
-    // Determine which frame to present based on stabilization mode
+    // Determine which frame to present
     size_t presentation_frame_idx = 0;
+    if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
+        presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
+    }
+
     cv::Mat H_stabilize = cv::Mat::eye(3, 3, CV_64F);
     
     // Calculate stabilization transform based on selected mode
     switch (stabilizationMode_) {
         case StabilizationMode::FULL_LOCK:
-            presentation_frame_idx = stabilizationWindow_.frames.size() - 1; // most recent frame
-            H_stabilize = calculateFullLockStabilization(stabilizationWindow_.transformations.back());
+            H_stabilize = calculateFullLockStabilization(presentation_frame_idx);
             break;
         case StabilizationMode::TRANSLATION_LOCK:
             // Currently handled same as GLOBAL_SMOOTHING
             // TODO: Implement specific translation-only stabilization
-            if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
-                presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
-            }
             H_stabilize = calculateGlobalSmoothingStabilization(presentation_frame_idx);
             break;
         case StabilizationMode::ROTATION_LOCK:
             // Currently handled same as GLOBAL_SMOOTHING
             // TODO: Implement specific rotation-only stabilization
-            if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
-                presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
-            }
             H_stabilize = calculateGlobalSmoothingStabilization(presentation_frame_idx);
             break;
         case StabilizationMode::GLOBAL_SMOOTHING:
         default:
-            if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
-                presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
-            }
             H_stabilize = calculateGlobalSmoothingStabilization(presentation_frame_idx);
             break;
     }

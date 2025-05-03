@@ -19,8 +19,8 @@ struct HomographyParameters {
     double theta;   // in-image-plane rotation angle
     double k;       // anisotropy scaling factor
     double delta;   // shear factor
-    cv::Vec2d t;  // translation vector
-    cv::Vec2d v;  // horizon line shift vector
+    cv::Vec2d t;    // translation vector
+    cv::Vec2d v;    // horizon line shift vector
 };
 
 struct Transformation {
@@ -87,7 +87,7 @@ private:
     std::pair<std::vector<cv::Point2f>, bool> trackFeatures(const cv::Mat& gray);
     cv::Mat estimateMotion(const std::vector<cv::Point2f>& currPoints, bool reliable);
     void updateTransformations(const cv::Mat& H_prev2curr, uint64_t current_idx);
-    cv::Mat calculateFullLockStabilization(const Transformation& current_transform);
+    cv::Mat calculateFullLockStabilization(size_t presentation_frame_idx);
     cv::Mat calculateGlobalSmoothingStabilization(size_t presentation_frame_idx);
     cv::Mat warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_scaled, 
                       const cv::Mat& next_trail_background, size_t presentation_frame_idx);
