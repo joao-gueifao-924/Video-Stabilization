@@ -24,9 +24,10 @@ int main(int argc, char** argv) {
               << frame_period_ms << "ms" << std::endl;
     
     // Create stabilizer
-    const int window_size = 30;
+    const int past_frames = 60;
+    const int future_frames = 60;
     const int working_height = 540;
-    Stabilizer stabilizer(window_size, working_height);
+    Stabilizer stabilizer(past_frames, future_frames, working_height);
     // Tracker tracker; // Tracker logic removed for now
     
     cv::Mat frame;

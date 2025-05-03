@@ -16,8 +16,8 @@ enum class StabilizationMode {
 
 struct Transformation {
     cv::Mat H;
-    uint64_t from_frame_idx;
-    uint64_t to_frame_idx;
+    size_t from_frame_idx;
+    size_t to_frame_idx;
     
     Transformation inverse() const {
         cv::Mat inv;
@@ -28,13 +28,12 @@ struct Transformation {
 
 struct Frame {
     cv::Mat image;
-    uint64_t frame_idx;
+    size_t frame_idx;
 };
 
 struct StabilizationWindow {
     std::deque<Transformation> transformations;
     std::deque<Frame> frames;
-    uint64_t current_frame_idx{0};
 };
 
 class Stabilizer {
@@ -47,13 +46,17 @@ public:
         return std::chrono::high_resolution_clock::now();
     }
     
-    Stabilizer(size_t windowSize = 15, int workingHeight = 360);
+    Stabilizer(size_t pastFrames = 15, size_t futureFrames = 15, int workingHeight = 360);
     
     // Process a frame and return the stabilized version
     cv::Mat stabilizeFrame(const cv::Mat& frame);
     
     // Reset the stabilizer state
     void reset();
+
+    inline size_t totalFrameWindowSize() const {
+        return totalPastFrames_ + 1 + totalFutureFrames_;
+    }
 
     // Helper method to convert duration to milliseconds
     inline milli_duration toMilliseconds(const std::chrono::high_resolution_clock::time_point& start,
@@ -62,7 +65,8 @@ public:
     }
     
 private:
-    size_t smoothingWindowSize_;
+    size_t totalPastFrames_;
+    size_t totalFutureFrames_;
     int workingHeight_; // Target height for internal processing
     double scaleFactor_; // Scale factor between original and working resolution
     cv::Size originalSize_; // Original frame size
