@@ -25,8 +25,8 @@ int main(int argc, char** argv) {
               << frame_period_ms << "ms" << std::endl;
     
     // Create stabilizer
-    const int past_frames = 30;
-    const int future_frames = 10;
+    const int past_frames = 2.0 * fps;
+    const int future_frames = 1.0 * fps;
     const int working_height = 540;
     Stabilizer stabilizer(past_frames, future_frames, working_height);
     // Tracker tracker; // Tracker logic removed for now
