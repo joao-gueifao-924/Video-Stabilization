@@ -68,6 +68,20 @@ public:
     }
     
 private:
+    // Helper methods for stabilizeFrame
+    void initializeFrame(const cv::Mat& frame);
+    cv::Mat prepareTrailBackground();
+    void addFrameToWindow(const cv::Mat& frame);
+    std::pair<std::vector<cv::Point2f>, bool> trackFeatures(const cv::Mat& gray);
+    cv::Mat estimateMotion(const std::vector<cv::Point2f>& currPoints, bool reliable);
+    void updateTransformations(const cv::Mat& H_prev2curr, uint64_t current_idx);
+    cv::Mat calculateFullLockStabilization(const Transformation& current_transform);
+    cv::Mat calculateGlobalSmoothingStabilization(size_t presentation_frame_idx);
+    cv::Mat warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_scaled, 
+                      const cv::Mat& next_trail_background, size_t presentation_frame_idx);
+    void detectNewFeatures(const cv::Mat& gray);
+    void printTimings();
+    
     size_t totalPastFrames_;
     size_t totalFutureFrames_;
     int workingHeight_; // Target height for internal processing
