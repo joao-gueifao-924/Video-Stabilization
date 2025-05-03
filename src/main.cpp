@@ -51,8 +51,10 @@ int main(int argc, char** argv) {
     // Display help information
     std::cout << "Keyboard controls:" << std::endl;
     std::cout << "  q - Quit" << std::endl;
-    std::cout << "  r - Reset stabilizer" << std::endl;
+    std::cout << "  x - Reset stabilizer" << std::endl;
     std::cout << "  f - Full lock mode (freeze frame)" << std::endl;
+    std::cout << "  t - Translation lock mode" << std::endl;
+    std::cout << "  r - Rotation lock mode" << std::endl;
     std::cout << "  g - Global smoothing mode (allow slow movements)" << std::endl;
     
     while (cap.read(frame)) {
@@ -93,18 +95,28 @@ int main(int argc, char** argv) {
             
             // --- Key Presses (with dynamic timing) --- 
             char key = cv::waitKey(wait_time);
-            if (key == 'q') {
-                break;
-            } else if (key == 'r') { // Reset stabilizer 
-                stabilizer.reset(); 
-                // Clear frame buffer too
-                originalFrameBuffer.clear();
-                // tracker.reset();
-                // trackerInitialized = false;
-            } else if (key == 'f') {
-                stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
-            } else if (key == 'g') {
-                stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
+            switch (key) {
+                case 'q':
+                    break;
+                case 'x': // Reset stabilizer
+                    stabilizer.reset(); 
+                    // Clear frame buffer too
+                    originalFrameBuffer.clear();
+                    // tracker.reset();
+                    // trackerInitialized = false;
+                    break;
+                case 'f':
+                    stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
+                    break;
+                case 't':
+                    stabilizer.setStabilizationMode(StabilizationMode::TRANSLATION_LOCK);
+                    break;
+                case 'r':
+                    stabilizer.setStabilizationMode(StabilizationMode::ROTATION_LOCK);
+                    break;
+                case 'g':
+                    stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
+                    break;
             }
             // Removed other mode-switching keys (d, f, t, o, g) for now...
         } else {
