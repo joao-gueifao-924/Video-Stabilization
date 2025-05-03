@@ -77,6 +77,8 @@ private:
     cv::Mat prevGray_;
     std::vector<cv::Point2f> prevPoints_;
 
+    cv::Mat trail_background_; // Background for the trail effect
+
     // Timing variables (rolling averages)
     milli_duration gftt_avg_duration_ms_{0.0};
     long long gftt_call_count_{0};

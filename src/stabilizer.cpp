@@ -13,7 +13,7 @@
 
 Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight)
     : totalPastFrames_(pastFrames), totalFutureFrames_(futureFrames), 
-      workingHeight_(workingHeight), scaleFactor_(1.0)
+      workingHeight_(workingHeight), scaleFactor_(1.0), trail_background_()
 {
     reset();
     last_print_time_ = now();
@@ -22,6 +22,7 @@ Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight
 void Stabilizer::reset() {
     prevGray_ = cv::Mat();
     prevPoints_.clear();
+    trail_background_ = cv::Mat();
     stabilizationWindow_.transformations.clear();
     stabilizationWindow_.frames.clear();
     originalSize_ = cv::Size(0, 0);
@@ -48,6 +49,21 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         scaleFactor_ = static_cast<double>(workingHeight_) / frame.rows;
         workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), workingHeight_);
     }
+    
+    // --- Initialize or resize trail background --- 
+    if (trail_background_.empty() || trail_background_.size() != originalSize_) {
+        trail_background_ = cv::Mat::zeros(originalSize_, frame.type());
+    }
+    
+    // --- Generate next trail background --- 
+    cv::Mat next_trail_background;
+    // Grayscale
+    cv::cvtColor(trail_background_, next_trail_background, cv::COLOR_BGR2GRAY);
+    // Convert back to BGR for compatibility
+    cv::cvtColor(next_trail_background, next_trail_background, cv::COLOR_GRAY2BGR);
+    cv::GaussianBlur(next_trail_background, next_trail_background, cv::Size(3, 3), 0);
+    // Darken
+    next_trail_background *= 0.99; 
 
     // Increment frame index
     uint64_t current_idx = 0;
@@ -261,12 +277,41 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
 
     // --- Warp the original frame ---
-    cv::Mat stabilized;
+    // Initialize stabilized frame with the trail background
+    cv::Mat stabilized = next_trail_background.clone();
+    
     if (!H_stabilize_scaled.empty() && cv::checkRange(H_stabilize_scaled)) {
         auto start_warp = now();
         
         cv::Mat presentation_image = stabilizationWindow_.frames[presentation_frame_idx].image;
-        cv::warpPerspective(presentation_image, stabilized, H_stabilize_scaled, frame.size());
+        cv::Mat warped_image;
+        // Warp into a separate Mat
+        cv::warpPerspective(presentation_image, warped_image, H_stabilize_scaled, frame.size());
+        
+        // Create a mask by transforming the frame corners
+        const int BORDER_SIZE = 10;
+        cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
+        std::vector<cv::Point2f> original_corners(4);
+        original_corners[0] = cv::Point2f(BORDER_SIZE, BORDER_SIZE);
+        original_corners[1] = cv::Point2f(presentation_image.cols - BORDER_SIZE, BORDER_SIZE);
+        original_corners[2] = cv::Point2f(presentation_image.cols - BORDER_SIZE, presentation_image.rows - BORDER_SIZE);
+        original_corners[3] = cv::Point2f(BORDER_SIZE, presentation_image.rows - BORDER_SIZE);
+        
+        std::vector<cv::Point2f> transformed_corners(4);
+        cv::perspectiveTransform(original_corners, transformed_corners, H_stabilize_scaled);
+        
+        // Convert Point2f to Point for fillConvexPoly
+        std::vector<cv::Point> poly_corners(4);
+        for(int i = 0; i < 4; ++i) {
+            poly_corners[i] = transformed_corners[i];
+        }
+        
+        // Draw the filled polygon on the mask
+        cv::fillConvexPoly(mask, poly_corners, cv::Scalar(255));
+
+        // Copy warped image onto the trail background using the mask
+        warped_image.copyTo(stabilized, mask);
+
         auto end_warp = now();
         
         auto duration_ms_warp = toMilliseconds(start_warp, end_warp);
@@ -274,6 +319,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         warp_call_count_++;
         warp_avg_duration_ms_ += (duration_ms_warp - warp_avg_duration_ms_) / warp_call_count_;
     } else {
+
          frame.copyTo(stabilized);
     }
 
@@ -313,6 +359,9 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         std::cout << "----------------------------" << std::endl;
         last_print_time_ = now();
     }
+
+    // --- Update trail background for next frame ---
+    trail_background_ = stabilized.clone();
 
     return stabilized;
 }
