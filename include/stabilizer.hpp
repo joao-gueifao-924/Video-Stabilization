@@ -17,6 +17,7 @@ enum class StabilizationMode {
 struct HomographyParameters {
     double s;       // scaling factor
     double theta;   // in-image-plane rotation angle
+    cv::Point2d c;  // center of scaling and rotation
     double k;       // anisotropy scaling factor
     double delta;   // shear factor
     cv::Vec2d t;    // translation vector
@@ -76,8 +77,8 @@ public:
         return std::chrono::duration_cast<milli_duration>(end - start);
     }
     
-    // Decomposes a homography H into H = H_Similarity * H_Shear * H_Projective
-    static HomographyParameters decomposeHomography(const cv::Mat& H);
+    static HomographyParameters decomposeHomography(const cv::Mat& H, cv::Point2d rot_center);
+    static cv::Mat composeHomography(const HomographyParameters& params);
 
 private:
     // Helper methods for stabilizeFrame

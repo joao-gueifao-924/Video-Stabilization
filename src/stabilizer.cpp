@@ -170,6 +170,7 @@ cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& currPoints, b
     if (reliable) {
         auto start_motion_estimation = now();
         // Estimate Euclidean transform (rigid + isotropic scale) instead of full homography.
+        //cv::Mat M = cv::findHomography(prevPoints_, currPoints, cv::RANSAC);
         cv::Mat M = cv::estimateAffinePartial2D(prevPoints_, currPoints, cv::noArray(), cv::RANSAC);
         auto end_motion_estimation = now();
         
@@ -179,10 +180,14 @@ cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& currPoints, b
         homography_avg_duration_ms_ += 
             (duration_ms_motion - homography_avg_duration_ms_) / homography_call_count_;
 
-        if (!M.empty() && M.rows == 2 && M.cols == 3 && cv::checkRange(M)) {
-             // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
-             H_prev2curr = cv::Mat::eye(3, 3, CV_64F);
-             M.copyTo(H_prev2curr(cv::Rect(0, 0, 3, 2)));
+        if (!M.empty() && cv::checkRange(M)) {
+            if (M.rows == 2 && M.cols == 3) {
+                // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
+                H_prev2curr = cv::Mat::eye(3, 3, CV_64F);
+                M.copyTo(H_prev2curr(cv::Rect(0, 0, 3, 2)));
+            } else { // M is already a 3x3 homography
+                M.copyTo(H_prev2curr);
+            }
         }
     }
     
@@ -203,6 +208,11 @@ void Stabilizer::updateTransformations(const cv::Mat& H_prev2curr, uint64_t curr
 }
 
 cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx) {
+    // If we are not using any lock, we can just return the identity matrix
+    if (stabilizationMode_ == StabilizationMode::GLOBAL_SMOOTHING) {
+        return cv::Mat::eye(3, 3, CV_64F);
+    }
+
     size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
 
     // If this iteration is the first time we are computing the stabilization transform, use the identity matrix
@@ -366,6 +376,18 @@ void Stabilizer::printTimings() {
     }
 }
 
+cv::Vec2d removeRotationCenterFromTranslation(const cv::Vec2d& t, const cv::Vec2d& c, double s, double theta) {
+    
+    theta = -theta;
+    cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
+    cv::Mat R = (cv::Mat_<double>(2, 2) << 
+                 std::cos(theta), -std::sin(theta),
+                 std::sin(theta), std::cos(theta));
+    cv::Vec2d t_shift = s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(c)));
+    cv::Vec2d t_shifted = cv::Vec2d(t) - 1.0 * t_shift;
+    return t_shifted;
+}
+
 cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     // Initialize frame processing
     initializeFrame(frame);
@@ -408,17 +430,47 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         presentation_frame_idx = stabilizationWindow_.frames.size() - totalFutureFrames_ - 1;
     }
 
-    cv::Mat H_stabilize = cv::Mat::eye(3, 3, CV_64F);
+    cv::Mat H_stabilize;
+
+    const double epsilon = 1e-6;
     
+    cv::Mat H_global_smoothing = calculateGlobalSmoothingStabilization(presentation_frame_idx);
+    cv::Mat H_lock = calculateFullLockStabilization(presentation_frame_idx);
+    
+    cv::Point2d rot_center = cv::Point2d(workingSize_.width / 2, workingSize_.height / 2);
+
+    HomographyParameters homography_params_global_smoothing = decomposeHomography(H_global_smoothing, rot_center);
+    cv::Mat H_global_smoothing2 = composeHomography(homography_params_global_smoothing);
+    assert(cv::norm(H_global_smoothing - H_global_smoothing2, cv::NORM_INF) < epsilon);
+    
+    HomographyParameters homography_params_lock = decomposeHomography(H_lock, rot_center);
+    cv::Mat H_lock2 = composeHomography(homography_params_lock);
+    assert(cv::norm(H_lock - H_lock2, cv::NORM_INF) < epsilon);
+
+    HomographyParameters homography_params_stabilize;
+    cv::Vec2d t_shifted;
+
     // Calculate stabilization transform based on selected mode
     switch (stabilizationMode_) {
         case StabilizationMode::FULL_LOCK:
-            H_stabilize = calculateFullLockStabilization(presentation_frame_idx);
+            H_stabilize = H_lock; // simply use the full lock transform
+            std::cout <<" Homography lock theta: " << homography_params_lock.theta * 180.0 / M_PI << " deg" << std::endl;
+            std::cout <<" Homography lock t: " << homography_params_lock.t << std::endl;
+            std::cout <<" Homography lock s: " << homography_params_lock.s << std::endl;
+
             break;
         case StabilizationMode::TRANSLATION_LOCK:
             // Currently handled same as GLOBAL_SMOOTHING
             // TODO: Implement specific translation-only stabilization
-            H_stabilize = calculateGlobalSmoothingStabilization(presentation_frame_idx);
+            homography_params_stabilize = homography_params_global_smoothing;
+            std::cout << "prior homography_params_lock.t: " << homography_params_lock.t << std::endl;
+
+            t_shifted = homography_params_lock.t;
+            t_shifted = removeRotationCenterFromTranslation(homography_params_lock.t, homography_params_lock.c, homography_params_lock.s, homography_params_lock.theta);
+            std::cout << "post homography_params_lock.t: " << t_shifted << std::endl;
+
+            homography_params_stabilize.t = t_shifted;
+            H_stabilize = composeHomography(homography_params_stabilize);
             break;
         case StabilizationMode::ROTATION_LOCK:
             // Currently handled same as GLOBAL_SMOOTHING
@@ -427,7 +479,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
             break;
         case StabilizationMode::GLOBAL_SMOOTHING:
         default:
-            H_stabilize = calculateGlobalSmoothingStabilization(presentation_frame_idx);
+            H_stabilize = H_global_smoothing;
             break;
     }
     
@@ -540,7 +592,7 @@ void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
 }
 
 
-HomographyParameters Stabilizer::decomposeHomography(const cv::Mat& H) {
+HomographyParameters Stabilizer::decomposeHomography(const cv::Mat& H, cv::Point2d rot_center) {
     if (H.empty() || H.rows != 3 || H.cols != 3 || H.type() != CV_64F) {
         throw std::invalid_argument("Error: Input homography matrix must be a non-empty 3x3 CV_64F matrix.");
     }
@@ -556,18 +608,19 @@ HomographyParameters Stabilizer::decomposeHomography(const cv::Mat& H) {
 
     // Extract translation vector t = [tx, ty] and projective vector v = [v1, v2]
     cv::Mat t = H_norm(cv::Rect(2, 0, 1, 2));
-    cv::Mat v = H_norm(cv::Rect(0, 0, 2, 1));
+    cv::Mat v = H_norm(cv::Rect(0, 2, 2, 1));
 
     // Extract A matrix from H_norm
     cv::Mat A = H_norm(cv::Rect(0, 0, 2, 2));
 
     // Extract RK matrix and scaling factor s from A
-    cv::Mat sRK = A - t * v.t();
-    double s = std::sqrt(cv::determinant(sRK)); // sqrt because A is 2x2 matrix
+    cv::Mat sRK = A - t * v;
 
-    if (std::abs(s) < epsilon) {
-        throw std::invalid_argument("Error: Scaling factor s is close to zero. Degenerate homography.");
+    double det_sRK = cv::determinant(sRK);
+    if (std::abs(det_sRK) < epsilon) {
+        throw std::invalid_argument("Error: determinant of sRK is close to zero. Degenerate homography.");
     }
+    double s = std::sqrt(det_sRK); // sqrt because A is 2x2 matrix
     cv::Mat RK = sRK / s;
 
     // Extrac R and K from RK using QR-decomposition
@@ -582,11 +635,50 @@ HomographyParameters Stabilizer::decomposeHomography(const cv::Mat& H) {
     double sin_theta = (R.at<double>(1, 0) - R.at<double>(0, 1)) / 2;
     double theta = std::atan2(sin_theta, cos_theta);
     
-    // Extract k,delta from K
+    // Extract k and delta from K
     double k1 = K.at<double>(0, 0);
     double k2 = K.at<double>(1, 1);
-    double k = k1/k2;
+    assert(std::abs(k2 - 1/k1) < epsilon); // K is a upper triangular matrix with det(K) = 1, hence k2 = 1/k1
+
     double delta = K.at<double>(0, 1);
 
-    return HomographyParameters{s, theta, k, delta, t, v};
+    // Now we need to shift translation t given scaling s and rotation center rot_center
+    cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
+    cv::Vec2d t_shift = s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(rot_center)));
+    cv::Vec2d t_shifted = cv::Vec2d(t) - t_shift;
+
+    // only need k1, as k2 = 1/k1
+    return HomographyParameters{s, theta, rot_center, k1, delta, t_shifted, v};
+}
+
+cv::Mat Stabilizer::composeHomography(const HomographyParameters& params) {
+    cv::Mat H = cv::Mat::eye(3, 3, CV_64F);
+    
+    cv::Mat R = (cv::Mat_<double>(2, 2) << 
+                 std::cos(params.theta), -std::sin(params.theta),
+                 std::sin(params.theta), std::cos(params.theta));
+    
+    cv::Mat K = (cv::Mat_<double>(2, 2) << 
+                 params.k, params.delta,
+                 0, 1/params.k);
+
+    // Need to shift translation vector t given scaling s and rotation center
+    cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
+
+    // t_shift = s * (I - R) * rot_center
+    cv::Vec2d t_shift = params.s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(params.c)));
+    cv::Vec2d t_shifted = params.t + t_shift;
+
+    cv::Mat A = params.s * R * K + t_shifted * params.v.t();
+    cv::Mat H_norm = cv::Mat::eye(3, 3, CV_64F);
+
+    A.copyTo(H_norm(cv::Rect(0, 0, 2, 2)));
+
+    H_norm.at<double>(0, 2) = t_shifted[0];
+    H_norm.at<double>(1, 2) = t_shifted[1];
+
+    H_norm.at<double>(2, 0) = params.v[0];
+    H_norm.at<double>(2, 1) = params.v[1];
+
+    return H_norm;
 }
