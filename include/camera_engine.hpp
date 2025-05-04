@@ -22,8 +22,8 @@ public:
     ~CameraEngine();
 
     // Initialize the camera with default parameters
-    void initCamera(double posX = 0.0, double posY = 0.0, double posZ = 1.0,
-                   double pan = 0.0, double tilt = 90.0, double roll = 180.0,
+    void initCamera(double posX = 0.0, double posY = 0.0, double posZ = 0.5,
+                   double pan = 0.0, double tilt = 105.0, double roll = 180.0,
                    double focalLength = 1000.0, int width = 1280, int height = 720);
 
     // Render a frame with the current camera parameters
