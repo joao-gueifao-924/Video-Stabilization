@@ -9,20 +9,22 @@ class CameraEngine {
 public:
     // Structure to hold camera parameters
     struct CameraParams {
-        cv::Point3d position; // XYZ position of the camera
-        double pan, tilt, roll; // Orientation angles in degrees
-        double focalLength; // Focal length of the camera
-        cv::Size sensorResolution; // Image sensor resolution
+        cv::Point3d position = cv::Point3d(0, 0, 1.0); // Default 1m above the floor
+        double pan = 0.0;    // degrees
+        double tilt = 0.0;   // degrees
+        double roll = 0.0;   // degrees
+        double focalLength = 1000.0; // pixels
+        cv::Size sensorResolution = cv::Size(1280, 720); // Default HD resolution
     };
 
     // Constructor
-    CameraEngine(const std::string& floorTexturePath);
+    CameraEngine(const std::string& floorTexturePath, double floorWidth = 10.0);
     ~CameraEngine();
 
     // Initialize the camera with default parameters
-    void initCamera(double posX = 0, double posY = 0, double posZ = 3,
-                   double pan = 0, double tilt = 180, double roll = 0,
-                   double focalLength = 600, int width = 1280, int height = 720);
+    void initCamera(double posX = 0.0, double posY = 0.0, double posZ = 1.0,
+                   double pan = 0.0, double tilt = 180.0, double roll = 0.0,
+                   double focalLength = 1000.0, int width = 1280, int height = 720);
 
     // Render a frame with the current camera parameters
     cv::Mat renderFrame();
@@ -76,5 +78,6 @@ private:
     cv::Mat m_floorTexture;
     double m_moveSpeed;
     double m_rollSpeed;
+    double m_floorWidth;
     double m_minFloorX, m_maxFloorX, m_minFloorY, m_maxFloorY;
 }; 

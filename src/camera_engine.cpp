@@ -1,11 +1,11 @@
-#include "camera_engine.hpp"
+#include "../include/camera_engine.hpp"
 
 using namespace cv;
 using namespace std;
 
 // Constructor
-CameraEngine::CameraEngine(const std::string& floorTexturePath) 
-    : m_moveSpeed(0.1), m_rollSpeed(2.0) {
+CameraEngine::CameraEngine(const std::string& floorTexturePath, double floorWidth) 
+    : m_moveSpeed(0.1), m_rollSpeed(2.0), m_floorWidth(floorWidth) {
     // Load floor texture
     m_floorTexture = imread(floorTexturePath);
     if (m_floorTexture.empty()) {
@@ -16,11 +16,16 @@ CameraEngine::CameraEngine(const std::string& floorTexturePath)
     cout << "Floor texture loaded successfully (" 
          << m_floorTexture.cols << "x" << m_floorTexture.rows << ")" << endl;
 
-    // Define floor boundaries
-    m_minFloorX = -5.0;
-    m_maxFloorX = 5.0;
-    m_minFloorY = -5.0;
-    m_maxFloorY = 5.0;
+    // Calculate floor boundaries respecting image aspect ratio
+    double aspectRatio = static_cast<double>(m_floorTexture.cols) / static_cast<double>(m_floorTexture.rows);
+    double floorHeight = m_floorWidth / aspectRatio;
+    
+    m_minFloorX = -m_floorWidth / 2.0;
+    m_maxFloorX = m_floorWidth / 2.0;
+    m_minFloorY = -floorHeight / 2.0;
+    m_maxFloorY = floorHeight / 2.0;
+    
+    cout << "Floor dimensions: " << m_floorWidth << "m x " << floorHeight << "m" << endl;
 
     // Initialize camera with defaults
     initCamera();

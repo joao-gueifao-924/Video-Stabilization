@@ -12,7 +12,7 @@ using namespace std;
 
 int main2() {
   // Create the camera engine with floor texture
-  CameraEngine cameraEngine("/home/joao/Downloads/pexels-pixabay-326055.jpg");
+  CameraEngine cameraEngine("/home/joao/Downloads/pexels-pixabay-326055.jpg", 10.0);
   
   // Create a window
   namedWindow("Rendered Frame - Interactive Control", WINDOW_NORMAL);
