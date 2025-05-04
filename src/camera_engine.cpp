@@ -98,6 +98,17 @@ void CameraEngine::RenderPixelLoopBody::operator()(const Range& range) const {
     double camPosX = cameraPosition.x;
     double camPosY = cameraPosition.y;
     double camPosZ = cameraPosition.z;
+    
+    // Light blue sky color
+    const Vec3b skyColor(230, 216, 173); // BGR for light blue
+
+    // Calculate texture aspect ratio
+    double textureAspectRatio = static_cast<double>(textureCols) / static_cast<double>(textureRows);
+    
+    // Calculate tile size in world units
+    // Each tile in the world is 1.0 units wide and (1.0/aspectRatio) units high
+    double tileWidth = 1.0;
+    double tileHeight = tileWidth / textureAspectRatio;
 
     // Get pointers to rotation matrix elements for slightly faster access
     const double* R = cameraRotation.ptr<double>(0);
@@ -128,7 +139,7 @@ void CameraEngine::RenderPixelLoopBody::operator()(const Range& range) const {
             // Check if the ray is parallel to the plane or points away from it (dz has same sign as camPosZ)
             // We need t = -camPosZ / dz to be positive (intersection in front of camera ray origin)
             if (abs(dz) < 1e-9 || dz * camPosZ >= 0) {
-                frameRowPtr[x] = Vec3b(0, 0, 0); // Background color (black)
+                frameRowPtr[x] = skyColor; // Set sky color
                 continue;
             }
 
@@ -138,17 +149,20 @@ void CameraEngine::RenderPixelLoopBody::operator()(const Range& range) const {
             double worldX = camPosX + t * dx;
             double worldY = camPosY + t * dy;
 
-            // Check if the intersection point is within the defined floor boundaries
-            if (worldX < minFloorX || worldX > maxFloorX || worldY < minFloorY || worldY > maxFloorY) {
-                frameRowPtr[x] = Vec3b(0, 0, 0); // Background color
-                continue;
-            }
-
-            // Normalize the world coordinates to texture coordinates [0, 1]
-            double texU = (worldX - minFloorX) / (maxFloorX - minFloorX);
-            double texV = 1.0 - ((worldY - minFloorY) / (maxFloorY - minFloorY));
-
-            // Map to integer texture coordinates (simple nearest neighbor)
+            // Convert world coordinates to tile coordinates
+            // Using floor and mod to avoid mirroring/reflection artifacts
+            double tileX = worldX / tileWidth;
+            double tileY = worldY / tileHeight;
+            
+            // Get the fractional part properly, maintaining sign
+            // fmod() can return negative values, we add 1.0 and take fmod again to ensure positive [0,1) range
+            double texU = fmod(fmod(tileX, 1.0) + 1.0, 1.0);
+            double texV = fmod(fmod(tileY, 1.0) + 1.0, 1.0);
+            
+            // Invert V coordinate to fix upside-down orientation
+            //texV = 1.0 - texV;
+            
+            // Map to integer texture coordinates
             int textureX = static_cast<int>(texU * textureCols);
             int textureY = static_cast<int>(texV * textureRows);
 
