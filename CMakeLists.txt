@@ -12,6 +12,7 @@ add_executable(video_stabilization
     src/main.cpp
     src/stabilizer.cpp
     src/tracker.cpp
+    src/camera_engine.cpp
 )
 
 target_link_libraries(video_stabilization ${OpenCV_LIBS}) 
