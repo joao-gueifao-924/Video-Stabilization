@@ -28,7 +28,8 @@ CameraEngine::CameraEngine(const std::string& floorTexturePath, double floorWidt
     cout << "Floor dimensions: " << m_floorWidth << "m x " << floorHeight << "m" << endl;
 
     // Initialize camera with defaults
-    initCamera();
+    CameraParams defaultParams;
+    initCamera(defaultParams);
 }
 
 // Destructor
@@ -37,15 +38,8 @@ CameraEngine::~CameraEngine() {
 }
 
 // Initialize camera parameters
-void CameraEngine::initCamera(double posX, double posY, double posZ,
-                             double pan, double tilt, double roll,
-                             double focalLength, int width, int height) {
-    m_cameraParams.position = Point3d(posX, posY, posZ);
-    m_cameraParams.pan = pan;
-    m_cameraParams.tilt = tilt;
-    m_cameraParams.roll = roll;
-    m_cameraParams.focalLength = focalLength;
-    m_cameraParams.sensorResolution = Size(width, height);
+void CameraEngine::initCamera(const CameraParams& params) {
+    m_cameraParams = params;
 }
 
 // Helper method: Convert degrees to radians

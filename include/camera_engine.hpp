@@ -11,8 +11,8 @@ public:
     struct CameraParams {
         cv::Point3d position = cv::Point3d(0, 0, 1.0); // Default 1m above the floor
         double pan = 0.0;    // degrees
-        double tilt = 0.0;   // degrees
-        double roll = 0.0;   // degrees
+        double tilt = 105.0;   // degrees
+        double roll = 180.0;   // degrees
         double focalLength = 1000.0; // pixels
         cv::Size sensorResolution = cv::Size(1280, 720); // Default HD resolution
     };
@@ -22,9 +22,7 @@ public:
     ~CameraEngine();
 
     // Initialize the camera with default parameters
-    void initCamera(double posX = 0.0, double posY = 0.0, double posZ = 0.5,
-                   double pan = 0.0, double tilt = 105.0, double roll = 180.0,
-                   double focalLength = 1000.0, int width = 1280, int height = 720);
+    void initCamera(const CameraParams& params);
 
     // Render a frame with the current camera parameters
     cv::Mat renderFrame();
