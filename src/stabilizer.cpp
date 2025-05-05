@@ -10,6 +10,7 @@
 #include <iostream> // For potential debug/error messages
 #include <chrono>   // Include chrono for timing
 
+static const bool USE_ACCUMULATED_TRANSFORM = true; // else use ORB-based motion estimation for full lock
 
 Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight)
     : totalPastFrames_(pastFrames), totalFutureFrames_(futureFrames), 
@@ -38,14 +39,25 @@ void Stabilizer::reset() {
     homography_call_count_ = 0;
     warp_avg_duration_ms_ = milli_duration(0.0);
     warp_call_count_ = 0;
+    
+    // Reset ORB-based motion estimation variables
+    referenceFrameIdx_ = -1;
+    referenceGray_ = cv::Mat();
+    referenceKeypoints_.clear();
+    referenceDescriptors_ = cv::Mat();
+
     accumulatedTransform_ = Transformation();
     stabilizationMode_ = StabilizationMode::GLOBAL_SMOOTHING;
 }
 
 void Stabilizer::setStabilizationMode(StabilizationMode mode) {
     if (stabilizationMode_ != mode) {
-        // Reset the accumulated transform when switching to any mode
-        accumulatedTransform_ = Transformation();
+
+        // Reset variables used for ORB-based motion estimation when switching modes
+        referenceFrameIdx_ = -1; // Reset reference frame
+        referenceGray_ = cv::Mat();
+        referenceKeypoints_.clear();
+        referenceDescriptors_ = cv::Mat();
 
         stabilizationMode_ = mode;
         std::cout << "Stabilization mode changed to: ";
@@ -63,7 +75,6 @@ void Stabilizer::setStabilizationMode(StabilizationMode mode) {
                 std::cout << "GLOBAL_SMOOTHING";
                 break;
         }
-        std::cout << std::endl;
     }
 }
 
@@ -213,25 +224,110 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         return cv::Mat::eye(3, 3, CV_64F);
     }
 
-    size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
+    if (USE_ACCUMULATED_TRANSFORM)
+    {
+        size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
 
-    // If this iteration is the first time we are computing the stabilization transform, use the identity matrix
-    if (accumulatedTransform_.H.empty()) {
-        accumulatedTransform_.H = cv::Mat::eye(3, 3, CV_64F);
-        accumulatedTransform_.from_frame_idx = frame_idx;
-        accumulatedTransform_.to_frame_idx = frame_idx;
+        // If this iteration is the first time we are computing the stabilization transform, use the identity matrix
+        if (accumulatedTransform_.H.empty()) {
+            accumulatedTransform_.H = cv::Mat::eye(3, 3, CV_64F);
+            accumulatedTransform_.from_frame_idx = frame_idx;
+            accumulatedTransform_.to_frame_idx = frame_idx;
+        }
+        else {
+            Transformation next_transform = stabilizationWindow_.transformations[presentation_frame_idx -1];
+            assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
+
+            // update the accumulated transform by multiplying it with the transformation
+            accumulatedTransform_.H = accumulatedTransform_.H * next_transform.H;
+            accumulatedTransform_.to_frame_idx = next_transform.to_frame_idx;
+        }
+
+        // Use the accumulated transform to stabilize the frame
+        return accumulatedTransform_.H.inv();
     }
-    else {
-        Transformation next_transform = stabilizationWindow_.transformations[presentation_frame_idx -1];
-        assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
+    else { // ORB-based motion estimation for full lock
+        // Get the current frame from the presentation index
+        cv::Mat currentFrame = stabilizationWindow_.frames[presentation_frame_idx].image;
+        
+        // Downscale current frame to working resolution
+        cv::Mat currentResized;
+        cv::resize(currentFrame, currentResized, workingSize_, 0, 0, cv::INTER_LINEAR);
+        
+        // Convert to grayscale
+        cv::Mat currentGray;
+        cv::cvtColor(currentResized, currentGray, cv::COLOR_BGR2GRAY);
+        
+        // FULL_LOCK: If we don't have a reference yet, set this frame as reference
+        if (referenceGray_.empty()) {
+            std::cout << "Initializing FULL_LOCK with new reference image" << std::endl;
+            referenceFrameIdx_ = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
+            currentGray.copyTo(referenceGray_);
+            
+            // For robust feature matching, use ORB features
+            cv::Ptr<cv::ORB> orb = cv::ORB::create(300);
+            orb->detectAndCompute(referenceGray_, cv::noArray(), referenceKeypoints_, referenceDescriptors_);
+            
+            return cv::Mat::eye(3, 3, CV_64F); // First frame has no stabilization
+        }
+        
+        // For subsequent frames, detect features and match to reference
+        try {
+            // Detect features in current frame
+            std::vector<cv::KeyPoint> currentKeypoints;
+            cv::Mat currentDescriptors;
+            cv::Ptr<cv::ORB> orb = cv::ORB::create(300);
+            orb->detectAndCompute(currentGray, cv::noArray(), currentKeypoints, currentDescriptors);
+            
+            // If not enough features, can't stabilize
+            if (currentKeypoints.size() < 10 || referenceKeypoints_.size() < 10) {
+                std::cout << "Not enough features for FULL_LOCK" << std::endl;
+                return cv::Mat::eye(3, 3, CV_64F); 
+            }
+            
+            // Match features between reference and current frame
+            cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create("BruteForce-Hamming");
+            std::vector<cv::DMatch> matches;
+            matcher->match(referenceDescriptors_, currentDescriptors, matches);
+            
+            // Find matched point pairs for homography calculation
+            std::vector<cv::Point2f> refPoints, currPoints;
+            for (size_t i = 0; i < matches.size(); i++) {
+                refPoints.push_back(referenceKeypoints_[matches[i].queryIdx].pt);
+                currPoints.push_back(currentKeypoints[matches[i].trainIdx].pt);
+            }
+            
+            // Compute homography from reference to current (direct mapping)
+            cv::Mat H = cv::Mat::eye(3, 3, CV_64F);
+            //cv::Mat H = cv::findHomography(refPoints, currPoints, cv::RANSAC);
+            cv::Mat M = cv::estimateAffinePartial2D(refPoints, currPoints, cv::noArray(), cv::RANSAC);
+            if (!M.empty() && cv::checkRange(M)) {
+                if (M.rows == 2 && M.cols == 3) {
+                    // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
+                    H = cv::Mat::eye(3, 3, CV_64F);
+                    M.copyTo(H(cv::Rect(0, 0, 3, 2)));
+                } else { // M is already a 3x3 homography
+                    M.copyTo(H);
+                }
+            }
 
-        // update the accumulated transform by multiplying it with the transformation
-        accumulatedTransform_.H = accumulatedTransform_.H * next_transform.H;
-        accumulatedTransform_.to_frame_idx = next_transform.to_frame_idx;
+            
+            if (H.empty()) {
+                std::cout << "Failed to compute homography for FULL_LOCK" << std::endl;
+                return cv::Mat::eye(3, 3, CV_64F);
+            }
+            
+            // The stabilization matrix is the inverse of this transformation
+            cv::Mat stabilizationMatrix;
+            cv::invert(H, stabilizationMatrix);
+            
+            return stabilizationMatrix;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error in FULL_LOCK calculation: " << e.what() << std::endl;
+            return cv::Mat::eye(3, 3, CV_64F);
+        }
     }
-
-    // Use the accumulated transform to stabilize the frame
-    return accumulatedTransform_.H.inv();
 }
 
 cv::Mat Stabilizer::calculateGlobalSmoothingStabilization(size_t presentation_frame_idx) {
@@ -423,6 +519,10 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     
     // Update transformations window
     updateTransformations(H_prev2curr, current_idx);
+
+    assert(stabilizationWindow_.frames.size() == stabilizationWindow_.transformations.size() + 1);
+    assert(stabilizationWindow_.frames.front().frame_idx == stabilizationWindow_.transformations.front().from_frame_idx);
+    assert(stabilizationWindow_.frames.back().frame_idx == stabilizationWindow_.transformations.back().to_frame_idx);
     
     // Determine which frame to present
     size_t presentation_frame_idx = 0;
@@ -457,7 +557,6 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
             std::cout <<" Homography lock theta: " << homography_params_lock.theta * 180.0 / M_PI << " deg" << std::endl;
             std::cout <<" Homography lock t: " << homography_params_lock.t << std::endl;
             std::cout <<" Homography lock s: " << homography_params_lock.s << std::endl;
-
             break;
         case StabilizationMode::TRANSLATION_LOCK:
             // Currently handled same as GLOBAL_SMOOTHING

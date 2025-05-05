@@ -111,6 +111,12 @@ private:
 
     Transformation accumulatedTransform_; // Store the accumulated transformation for full lock mode
 
+    // ORB-based motion estimation variables
+    int64_t referenceFrameIdx_; // Reference frame index for full lock mode
+    cv::Mat referenceGray_; // Reference frame grayscale image
+    std::vector<cv::KeyPoint> referenceKeypoints_; // Reference frame keypoints
+    cv::Mat referenceDescriptors_; // Reference frame descriptors
+
     // Timing variables (rolling averages)
     milli_duration gftt_avg_duration_ms_{0.0};
     long long gftt_call_count_{0};
