@@ -144,11 +144,17 @@ int main() {
       string posText = "Pos: (" + to_string(cameraParams.position.x).substr(0,4) + ", "
                       + to_string(cameraParams.position.y).substr(0,4) + ", "
                       + to_string(cameraParams.position.z).substr(0,4) + ")";
+      // Add black background rectangle first
+      Rect posRect = Rect(5, 10, 240, 25);
+      rectangle(delayedOriginal, posRect, Scalar(0, 0, 0), -1);
       putText(delayedOriginal, posText, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
       
       string rotText = "Pan:" + to_string(static_cast<int>(cameraParams.pan))
                      + " Tilt:" + to_string(static_cast<int>(cameraParams.tilt))
                      + " Roll:" + to_string(static_cast<int>(cameraParams.roll));
+      // Add black background rectangle for rotation info
+      Rect rotRect = Rect(5, 40, 240, 25);
+      rectangle(delayedOriginal, rotRect, Scalar(0, 0, 0), -1);
       putText(delayedOriginal, rotText, Point(10, 60), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
       
       // Stop timer and calculate FPS
@@ -157,8 +163,10 @@ int main() {
       // Avoid division by zero if duration is very small
       double fps = (duration.count() > 0) ? 1000.0 / duration.count() : 2000.0;
       
-      // Display FPS
+      // Display FPS with black background
       string fpsText = "FPS: " + to_string(static_cast<int>(fps));
+      Rect fpsRect = Rect(5, 70, 120, 25);
+      rectangle(delayedOriginal, fpsRect, Scalar(0, 0, 0), -1);
       putText(delayedOriginal, fpsText, Point(10, 90), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
       
       // Display frames
