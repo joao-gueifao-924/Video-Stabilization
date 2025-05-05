@@ -66,35 +66,29 @@ int main() {
     }
 
     bool cameraMoved = false;
-    switch (key) {
+    switch (toupper(key)) {
       // --- Camera Movement ---
-      case 'w': // Move Forward
-      case 'W':
+      case 'W': // Move Forward
         cameraEngine.moveForward(1.0);
         cameraMoved = true;
         break;
-      case 's': // Move Backward
-      case 'S':
+      case 'S': // Move Backward
         cameraEngine.moveBackward(1.0);
         cameraMoved = true;
         break;
-      case 'a': // Move Left
-      case 'A':
+      case 'A': // Move Left
         cameraEngine.moveLeft(1.0);
         cameraMoved = true;
         break;
-      case 'd': // Move Right
-      case 'D':
+      case 'D': // Move Right
         cameraEngine.moveRight(1.0);
         cameraMoved = true;
         break;
-      case 'q': // Roll Counter-Clockwise
-      case 'Q':
+      case 'Q': // Roll Counter-Clockwise
         cameraEngine.rollCounterClockwise(1.0);
         cameraMoved = true;
         break;
-      case 'e': // Roll Clockwise
-      case 'E':
+      case 'E': // Roll Clockwise
         cameraEngine.rollClockwise(1.0);
         cameraMoved = true;
         break;
@@ -102,32 +96,26 @@ int main() {
         cameraEngine.moveUp(1.0);
         cameraMoved = true;
         break;
-      case 'c': // Move Down
-      case 'C':
+      case 'C': // Move Down
         cameraEngine.moveDown(1.0);
         cameraMoved = true;
         break;
         
       // --- Stabilization Controls ---
-      case 'x': // Reset stabilizer
-      case 'X':
+      case 'X': // Reset stabilizer
         stabilizer.reset();
         originalFrameBuffer.clear();
         break;
-      case 'f': // Full lock stabilization
-      case 'F':
+      case 'F': // Full lock stabilization
         stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
         break;
-      case 't': // Translation lock stabilization
-      case 'T':
+      case 'T': // Translation lock stabilization
         stabilizer.setStabilizationMode(StabilizationMode::TRANSLATION_LOCK);
         break;
-      case 'r': // Rotation lock stabilization
-      case 'R':
+      case 'R': // Rotation lock stabilization
         stabilizer.setStabilizationMode(StabilizationMode::ROTATION_LOCK);
         break;
-      case 'g': // Global smoothing stabilization
-      case 'G':
+      case 'G': // Global smoothing stabilization
         stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
         break;
     }
