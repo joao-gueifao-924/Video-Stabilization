@@ -12,6 +12,16 @@ using namespace std;
 int main() {
   // Create the camera engine with floor texture
   CameraEngine cameraEngine("/home/joao/Downloads/pexels-pixabay-326055.jpg", 10.0);
+
+  Point3d camera_pos(0.0, 0.0, 0.5);
+  double pan = 0.0; 
+  double tilt = 180.0;
+  double roll = 180.0;
+  double focalLength = 1000.0;
+  Size sensorResolution(1280, 720);
+  CameraEngine::CameraParams cameraParams(camera_pos, pan, tilt, roll, focalLength, sensorResolution);
+
+  cameraEngine.setCameraParams(cameraParams); 
   
   // Create stabilizer
   const double fps = 30.0; // Simulated camera framerate

@@ -15,6 +15,10 @@ public:
         double roll = 180.0;   // degrees
         double focalLength = 1000.0; // pixels
         cv::Size sensorResolution = cv::Size(1280, 720); // Default HD resolution
+
+        CameraParams() = default;
+        CameraParams(cv::Point3d position, double pan, double tilt, double roll, double focalLength, cv::Size sensorResolution)
+            : position(position), pan(pan), tilt(tilt), roll(roll), focalLength(focalLength), sensorResolution(sensorResolution) {}
     };
 
     // Constructor
