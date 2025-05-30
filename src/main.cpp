@@ -9,25 +9,48 @@
 using namespace cv;
 using namespace std;
 
+const static bool USE_VIDEO_CAMERA = true;
+
 int main() {
-  // Create the camera engine with floor texture
+  double fps = 0.0;
+
+  // TODO: only init one of these, not both
   CameraEngine cameraEngine("/home/joao/Downloads/pexels-pixabay-326055.jpg", 10.0);
+  VideoCapture cap("/home/joao/Downloads/IMG_4108.MOV");
+  //VideoCapture cap(2);
+  cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280);
+  cap.set(cv::CAP_PROP_FRAME_HEIGHT, 720);
 
-  Point3d camera_pos(0.0, 0.0, 0.5);
-  double pan = 0.0; 
-  double tilt = 180.0;
-  double roll = 180.0;
-  double focalLength = 1000.0;
-  Size sensorResolution(1280, 720);
-  CameraEngine::CameraParams cameraParams(camera_pos, pan, tilt, roll, focalLength, sensorResolution);
+  if (USE_VIDEO_CAMERA) {
+    
+    if (!cap.isOpened()) {
+      cout << "Error: Could not open video file." << endl;
+      return -1;
+    }
+    // Get video properties
+    int frameWidth = static_cast<int>(cap.get(CAP_PROP_FRAME_WIDTH));
+    int frameHeight = static_cast<int>(cap.get(CAP_PROP_FRAME_HEIGHT));
+    fps = static_cast<double>(cap.get(CAP_PROP_FPS));
 
-  cameraEngine.setCameraParams(cameraParams); 
+  } else { // use 3D camera engine simulation
+    // Create the camera engine with floor texture
+
+    Point3d camera_pos(0.5, -0.3, 0.7);
+    double pan = 0.0; 
+    double tilt = 180.0;
+    double roll = 180.0;
+    double focalLength = 1000.0;
+    Size sensorResolution(1280, 720);
+    CameraEngine::CameraParams cameraParams(camera_pos, pan, tilt, roll, focalLength, sensorResolution);
+    cameraEngine.setCameraParams(cameraParams);
+    fps = 30.0; // Simulated camera framerate
+  }
   
   // Create stabilizer
-  const double fps = 30.0; // Simulated camera framerate
-  const int past_frames = 0.5 * fps;
-  const int future_frames = 0.1 * fps;
-  const int working_height = 540;
+  
+  const int past_frames = 2.0 * fps;
+  const int future_frames = 1.5 * fps;
+  const int working_height = 360;
   Stabilizer stabilizer(past_frames, future_frames, working_height);
   
   // Create windows
@@ -65,41 +88,57 @@ int main() {
       break;
     }
 
-    bool cameraMoved = false;
+    cv::Mat frame;
+
+    if (USE_VIDEO_CAMERA) {
+      // Read frame from video file
+      
+      cap >> frame;
+      if (frame.empty()) {
+        cout << "Error: Could not read frame from video file." << endl;
+        break;
+      }
+    } else { // use 3D camera engine simulation
+      // Render frame from camera engine
+      frame = cameraEngine.renderFrame();   
+      bool cameraMoved = false;
+      switch (toupper(key)) {
+        // --- Camera Movement ---
+        case 'W': // Move Forward
+          cameraEngine.moveForward(1.0);
+          cameraMoved = true;
+          break;
+        case 'S': // Move Backward
+          cameraEngine.moveBackward(1.0);
+          cameraMoved = true;
+          break;
+        case 'A': // Move Left
+          cameraEngine.moveLeft(1.0);
+          cameraMoved = true;
+          break;
+        case 'D': // Move Right
+          cameraEngine.moveRight(1.0);
+          cameraMoved = true;
+          break;
+        case 'Q': // Roll Counter-Clockwise
+          cameraEngine.rollCounterClockwise(10.0);
+          cameraMoved = true;
+          break;
+        case 'E': // Roll Clockwise
+          cameraEngine.rollClockwise(1.0);
+          cameraMoved = true;
+          break;
+        case 32: // spacebar - Move Up
+          cameraEngine.moveUp(1.0);
+          cameraMoved = true;
+          break;
+        case 'C': // Move Down
+          cameraEngine.moveDown(1.0);
+          cameraMoved = true;
+          break;
+      }
+    }
     switch (toupper(key)) {
-      // --- Camera Movement ---
-      case 'W': // Move Forward
-        cameraEngine.moveForward(1.0);
-        cameraMoved = true;
-        break;
-      case 'S': // Move Backward
-        cameraEngine.moveBackward(1.0);
-        cameraMoved = true;
-        break;
-      case 'A': // Move Left
-        cameraEngine.moveLeft(1.0);
-        cameraMoved = true;
-        break;
-      case 'D': // Move Right
-        cameraEngine.moveRight(1.0);
-        cameraMoved = true;
-        break;
-      case 'Q': // Roll Counter-Clockwise
-        cameraEngine.rollCounterClockwise(1.0);
-        cameraMoved = true;
-        break;
-      case 'E': // Roll Clockwise
-        cameraEngine.rollClockwise(1.0);
-        cameraMoved = true;
-        break;
-      case 32: // spacebar - Move Up
-        cameraEngine.moveUp(1.0);
-        cameraMoved = true;
-        break;
-      case 'C': // Move Down
-        cameraEngine.moveDown(1.0);
-        cameraMoved = true;
-        break;
         
       // --- Stabilization Controls ---
       case 'X': // Reset stabilizer
@@ -119,9 +158,9 @@ int main() {
         stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
         break;
     }
+  
 
-    // --- Render Camera Frame ---
-    Mat frame = cameraEngine.renderFrame();
+
     
     // --- Apply Stabilization ---
     Mat stabilized = stabilizer.stabilizeFrame(frame);
