@@ -8,7 +8,9 @@
 #include <cstdint> // Keep for uint64_t
 
 enum class StabilizationMode {
-    FULL_LOCK,
+    ACCUMULATED_FULL_LOCK,
+    ORB_FULL_LOCK,
+    SIFT_FULL_LOCK,
     TRANSLATION_LOCK,
     ROTATION_LOCK,
     GLOBAL_SMOOTHING

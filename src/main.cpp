@@ -63,8 +63,10 @@ int main() {
        << " Q/E: Roll Counter-Clockwise / Clockwise\n"
        << " Space: Move Up\n"
        << " C: Move Down\n"
-       << " X: Reset stabilizer\n"
-       << " F: Full lock stabilization mode\n"
+       << " X: Reset stabilizer (to Global Smoothing)\n"
+       << " F: Full lock stabilization (accumulated)\n"
+       << " O: ORB-based Full lock stabilization\n"
+       << " S: SIFT-based Full lock stabilization\n"
        << " T: Translation lock stabilization mode\n"
        << " R: Rotation lock stabilization mode\n"
        << " G: Global smoothing stabilization mode\n"
@@ -144,7 +146,13 @@ int main() {
         stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
         break;
       case 'F': // Full lock stabilization
-        stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
+        stabilizer.setStabilizationMode(StabilizationMode::ACCUMULATED_FULL_LOCK);
+        break;
+      case 'O': // ORB-based Full lock stabilization
+        stabilizer.setStabilizationMode(StabilizationMode::ORB_FULL_LOCK);
+        break;
+      case 'S': // SIFT-based Full lock stabilization
+        stabilizer.setStabilizationMode(StabilizationMode::SIFT_FULL_LOCK);
         break;
       case 'T': // Translation lock stabilization
         stabilizer.setStabilizationMode(StabilizationMode::TRANSLATION_LOCK);

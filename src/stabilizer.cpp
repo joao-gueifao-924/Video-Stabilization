@@ -11,8 +11,6 @@
 #include <iostream> // For potential debug/error messages
 #include <chrono>   // Include chrono for timing
 
-static const bool USE_ACCUMULATED_TRANSFORM = true; // else use ORB-based motion estimation for full lock
-static const bool USE_ORB_METHOD = false;
 
 const int MIN_POINTS_FOR_MOTION_ESTIMATION = 10;
 
@@ -44,11 +42,13 @@ void Stabilizer::reset() {
     warp_avg_duration_ms_ = milli_duration(0.0);
     warp_call_count_ = 0;
     
-    // Reset ORB-based motion estimation variables
+    // Reset ORB- and SIFT-based motion estimation variables
     referenceFrameIdx_ = -1;
     referenceGray_ = cv::Mat();
     orb_referenceKeypoints_.clear();
     orb_referenceDescriptors_ = cv::Mat();
+    sift_referenceKeypoints_.clear();
+    sift_referenceDescriptors_ = cv::Mat();
 
     accumulatedTransform_ = Transformation();
     stabilizationMode_ = StabilizationMode::GLOBAL_SMOOTHING;
@@ -57,19 +57,27 @@ void Stabilizer::reset() {
 void Stabilizer::setStabilizationMode(StabilizationMode mode) {
     if (stabilizationMode_ != mode) {
 
-        // Reset variables used for ORB-based motion estimation when switching modes
+        // Reset variables used for ORB- and SIFT-based motion estimation when switching modes
         referenceFrameIdx_ = -1; // Reset reference frame
         referenceGray_ = cv::Mat();
         orb_referenceKeypoints_.clear();
         orb_referenceDescriptors_ = cv::Mat();
+        sift_referenceKeypoints_.clear();
+        sift_referenceDescriptors_ = cv::Mat();
 
         accumulatedTransform_ = Transformation();
 
         stabilizationMode_ = mode;
         std::cout << "Stabilization mode changed to: ";
         switch (mode) {
-            case StabilizationMode::FULL_LOCK:
-                std::cout << "FULL_LOCK";
+            case StabilizationMode::ACCUMULATED_FULL_LOCK:
+                std::cout << "ACCUMULATED_FULL_LOCK";
+                break;
+            case StabilizationMode::ORB_FULL_LOCK:
+                std::cout << "ORB_FULL_LOCK";
+                break;
+            case StabilizationMode::SIFT_FULL_LOCK:
+                std::cout << "SIFT_FULL_LOCK";
                 break;
             case StabilizationMode::TRANSLATION_LOCK:
                 std::cout << "TRANSLATION_LOCK";
@@ -81,6 +89,8 @@ void Stabilizer::setStabilizationMode(StabilizationMode mode) {
                 std::cout << "GLOBAL_SMOOTHING";
                 break;
         }
+
+        std::cout << std::endl;
     }
 }
 
@@ -241,11 +251,10 @@ void Stabilizer::updateTransformations(const cv::Mat& H_prev2curr, uint64_t curr
     }
 }
 
-std::pair<std::vector<cv::KeyPoint>, cv::Mat> filterKeypointByRelativeSize(int image_height, std::vector<cv::KeyPoint> keypoints, cv::Mat descriptors) {
+std::pair<std::vector<cv::KeyPoint>, cv::Mat> filterKeypointByRelativeSize(int image_height, std::vector<cv::KeyPoint> keypoints, cv::Mat descriptors, float max_relative_size = 0.05f) {
     // Filter keypoints by size: discard if too big compared to image height:
     // Filter out keypoints that are too large compared to image height
-    const float MAX_KEYPOINT_SIZE_RATIO = 0.05f;
-    float maxAllowedSize = image_height * MAX_KEYPOINT_SIZE_RATIO;
+    const float maxAllowedSize = image_height * max_relative_size;
     
     std::vector<cv::KeyPoint> filtered_keypoints;
     cv::Mat filtered_descriptors;
@@ -265,7 +274,7 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         return cv::Mat::eye(3, 3, CV_64F);
     }
 
-    if (USE_ACCUMULATED_TRANSFORM)
+    if (stabilizationMode_ == StabilizationMode::ACCUMULATED_FULL_LOCK) 
     {
         size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
 
@@ -324,10 +333,8 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         #endif
 
         return accumulatedTransform_.H.inv();
-
-
     }
-    else { // direct reference frame to current frame motion estimation
+    else if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK || stabilizationMode_ == StabilizationMode::SIFT_FULL_LOCK) { // direct reference frame to current frame motion estimation
         // Get the current frame from the presentation index
         cv::Mat currentFrame = stabilizationWindow_.frames[presentation_frame_idx].image;
 
@@ -340,6 +347,13 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         // Convert to grayscale
         cv::Mat currentGray;
         cv::cvtColor(currentResized, currentGray, cv::COLOR_BGR2GRAY);
+
+        // We need to improve the greyscale image for feature detection.
+        // We do this by applying a series of filters in the following order:
+        //   1. Median blur (to remove noise)
+        //   2. Sharpening (to enhance edges)
+        //   3. CLAHE (to enhance contrast)
+        //   4. Median blur (again)
 
         cv::medianBlur(currentGray, currentGray, 5);
 
@@ -355,107 +369,143 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         clahe->apply(currentGray, currentGray);
 
         cv::medianBlur(currentGray, currentGray, 5);
+        
         // Find matched point pairs for homography calculation
         std::vector<cv::Point2f> refPoints, currPoints;
 
-        if (USE_ORB_METHOD)
+        // Declare feature detector pointers
+        cv::Ptr<cv::ORB> orb;
+        cv::Ptr<cv::SIFT> sift;
+
+        // ORB parameters (defined here for clarity, used if mode is ORB_FULL_LOCK)
+        const int ORB_MAX_FEATURES = 2500;
+        const float ORB_SCALE_FACTOR = 1.2f;
+        const int ORB_PYRAMID_LEVELS = 12;
+        const int ORB_EDGE_THRESHOLD = 31;
+        const int ORB_FIRST_LEVEL = 0;
+        const int ORB_WTA_K = 2;
+        const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE;
+        const int ORB_PATCH_SIZE = 31;
+        const int ORB_FAST_THRESHOLD = 20;
+        const float LOWE_RATIO_THRESH = 0.6f;
+        const float MAX_ORB_KEYPOINT_SIZE_RATIO = 0.25f;
+        const float MAX_SIFT_KEYPOINT_SIZE_RATIO = 0.05f;
+
+        // SIFT parameters (defined here for clarity, used if mode is SIFT_FULL_LOCK)
+        const int nfeatures = 0;        // number of best features to retain (0 = unlimited)
+        const int nOctaveLayers = 3;    // number of layers in each octave
+        const double contrastThreshold = 0.04; // contrast threshold
+        const double edgeThreshold = 5; // edge threshold  
+        const double sigma = 1.2;       // sigma of Gaussian applied to first octave
+
+        // RANSAC parameters (common for both ORB and SIFT motion estimation)
+        const double MAX_RANSAC_REPROJ_THRESHOLD = 5.0;
+        const int ROBUST_METHOD_MOTION_ESTIMATION = cv::RANSAC;
+
+        if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK)
         {
-            // For robust feature matching, use ORB features
-            const int ORB_MAX_FEATURES = 2500;
-            const float ORB_SCALE_FACTOR = 1.2f;
-            const int ORB_PYRAMID_LEVELS = 12;
-            const int ORB_EDGE_THRESHOLD = 31;
-            const int ORB_FIRST_LEVEL = 0;
-            const int ORB_WTA_K = 2;
-            const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE;
-            const int ORB_PATCH_SIZE = 31;
-            const int ORB_FAST_THRESHOLD = 20;
-            const float LOWE_RATIO_THRESH = 0.6f; // Common threshold for Lowe's ratio test
-            const double MAX_RANSAC_REPROJ_THRESHOLD = 5.0;
-            const int ROBUST_METHOD_MOTION_ESTIMATION = cv::RANSAC;
+            orb = cv::ORB::create(ORB_MAX_FEATURES,
+                                ORB_SCALE_FACTOR,
+                                ORB_PYRAMID_LEVELS,
+                                ORB_EDGE_THRESHOLD,
+                                ORB_FIRST_LEVEL, 
+                                ORB_WTA_K,
+                                ORB_SCORE_TYPE,
+                                ORB_PATCH_SIZE,
+                                ORB_FAST_THRESHOLD);
+        }
+        else if (stabilizationMode_ == StabilizationMode::SIFT_FULL_LOCK)
+        {
+            sift = cv::SIFT::create(nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma);
+        }
 
-            cv::Ptr<cv::ORB> orb = cv::ORB::create(ORB_MAX_FEATURES,
-                                    ORB_SCALE_FACTOR,
-                                    ORB_PYRAMID_LEVELS,
-                                    ORB_EDGE_THRESHOLD,
-                                    ORB_FIRST_LEVEL, 
-                                    ORB_WTA_K,
-                                    ORB_SCORE_TYPE,
-                                    ORB_PATCH_SIZE,
-                                    ORB_FAST_THRESHOLD);
+        // If we don't have a reference yet, set this frame as reference and compute features on it
+        if (referenceGray_.empty()) {
+            std::cout << "Initializing ORB/SIFT FULL_LOCK with new reference image" << std::endl;
+            referenceFrameIdx_ = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
+            currentGray.copyTo(referenceGray_); // This referenceGray_ is shared for ORB & SIFT
+            previouslyReturnedH = cv::Mat::eye(3, 3, CV_64F); // Reset fallback homography
 
-            // SIFT parameters with default values
-            const int nfeatures = 0;        // number of best features to retain (0 = unlimited)
-            const int nOctaveLayers = 3;    // number of layers in each octave
-            const double contrastThreshold = 0.04; // contrast threshold
-            const double edgeThreshold = 5; // edge threshold  
-            const double sigma = 1.2;       // sigma of Gaussian applied to first octave
-            cv::Ptr<cv::SIFT> sift = cv::SIFT::create(/*nfeatures, nOctaveLayers, contrastThreshold, edgeThreshold, sigma*/);
+            std::vector<cv::KeyPoint> filtered_keypoints_orb;
+            cv::Mat filtered_descriptors_orb;
+            std::vector<cv::KeyPoint> filtered_keypoints_sift;
+            cv::Mat filtered_descriptors_sift;
 
-            // FULL_LOCK: If we don't have a reference yet, set this frame as reference
-            if (referenceGray_.empty()) {
-                std::cout << "Initializing FULL_LOCK with new reference image" << std::endl;
-                referenceFrameIdx_ = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
-                currentGray.copyTo(referenceGray_);
-
-                //orb->detectAndCompute(referenceGray_, cv::noArray(), orb_referenceKeypoints_, orb_referenceDescriptors_);
+            if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) {
+                orb->detectAndCompute(referenceGray_, cv::noArray(), orb_referenceKeypoints_, orb_referenceDescriptors_);
+                std::tie(filtered_keypoints_orb, filtered_descriptors_orb) = filterKeypointByRelativeSize(referenceGray_.rows, orb_referenceKeypoints_, orb_referenceDescriptors_, MAX_ORB_KEYPOINT_SIZE_RATIO);
+                orb_referenceKeypoints_ = filtered_keypoints_orb;
+                orb_referenceDescriptors_ = filtered_descriptors_orb;
+            } else { // SIFT_FULL_LOCK
                 sift->detectAndCompute(referenceGray_, cv::noArray(), sift_referenceKeypoints_, sift_referenceDescriptors_);
-
-                auto [filtered_keypoints, filtered_descriptors] = filterKeypointByRelativeSize(currentGray.rows, sift_referenceKeypoints_, sift_referenceDescriptors_);
-                sift_referenceKeypoints_ = filtered_keypoints;
-                sift_referenceDescriptors_ = filtered_descriptors;
-
-
-
-                //gftt_reference_corners_ = detectNewFeatures(referenceGray_);
-                
-                return cv::Mat::eye(3, 3, CV_64F); // First frame has no stabilization
+                std::tie(filtered_keypoints_sift, filtered_descriptors_sift) = filterKeypointByRelativeSize(referenceGray_.rows, sift_referenceKeypoints_, sift_referenceDescriptors_, MAX_SIFT_KEYPOINT_SIZE_RATIO);
+                sift_referenceKeypoints_ = filtered_keypoints_sift;
+                sift_referenceDescriptors_ = filtered_descriptors_sift;
             }
             
-            // For subsequent frames, detect features and match to reference
-            try {
-                // Detect features in current frame
-                std::vector<cv::KeyPoint> orb_currentKeypoints, sift_currentKeypoints;
-                cv::Mat orb_currentDescriptors, sift_currentDescriptors;
-                //orb->detectAndCompute(currentGray, cv::noArray(), orb_currentKeypoints, orb_currentDescriptors);
-                sift->detectAndCompute(currentGray, cv::noArray(), sift_currentKeypoints, sift_currentDescriptors);
+            return cv::Mat::eye(3, 3, CV_64F); // First frame is reference frame, so has no motion to cancel out
+        }
+        
+        // For subsequent frames, detect features and match to reference
+        try {
+            std::vector<cv::KeyPoint> currentKeypoints;
+            cv::Mat currentDescriptors;
+            std::vector<cv::KeyPoint> filtered_keypoints_curr;
+            cv::Mat filtered_descriptors_curr;
 
-                std::vector<cv::Point2f> filtered_gftt_reference_corners_;
-                std::vector<cv::Point2f> filtered_gftt_current_corners_;
+            if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) {
+                orb->detectAndCompute(currentGray, cv::noArray(), currentKeypoints, currentDescriptors);
+                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = filterKeypointByRelativeSize(currentGray.rows, currentKeypoints, currentDescriptors, MAX_ORB_KEYPOINT_SIZE_RATIO);
+            } else { // SIFT_FULL_LOCK
+                sift->detectAndCompute(currentGray, cv::noArray(), currentKeypoints, currentDescriptors);
+                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = filterKeypointByRelativeSize(currentGray.rows, currentKeypoints, currentDescriptors, MAX_SIFT_KEYPOINT_SIZE_RATIO);
+            }
 
-                //trackFeatures(referenceGray_, currentGray, gftt_reference_corners_, filtered_gftt_reference_corners_, filtered_gftt_current_corners_);
-                // cv::Mat H_gftt = estimateMotion(filtered_gftt_reference_corners_, filtered_gftt_current_corners_);
 
-                // previouslyReturnedH = H_gftt.inv();
-                // return previouslyReturnedH;
-
-                auto [filtered_keypoints, filtered_descriptors] = filterKeypointByRelativeSize(currentGray.rows, sift_currentKeypoints, sift_currentDescriptors);
-                sift_currentKeypoints  = filtered_keypoints;
-                sift_currentDescriptors = filtered_descriptors;
-
+            currentKeypoints  = filtered_keypoints_curr;
+            currentDescriptors = filtered_descriptors_curr;
+            
+            // display feature points for debugging - KEEP THIS!
+            #if 0
                 cv::Mat img_debug = currentGray.clone();
-                cv::drawKeypoints(img_debug, sift_currentKeypoints, img_debug, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+                cv::drawKeypoints(img_debug, currentKeypoints, img_debug, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
                 cv::imshow("features", img_debug);
+            #endif
+
+            // If not enough features, can't stabilize
+            const auto& referenceKeypoints = (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? orb_referenceKeypoints_ : sift_referenceKeypoints_;
+            if (currentKeypoints.size() < 10 || referenceKeypoints.size() < 10) {
+                std::cout << "Not enough features for ORB/SIFT FULL_LOCK" << std::endl;
+                return previouslyReturnedH; 
+            }
+
+            // Match features
+            std::vector<cv::DMatch> good_matches;
+            if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) {
+                cv::BFMatcher matcher(cv::NORM_HAMMING);
+                std::vector<std::vector<cv::DMatch>> knn_matches;
+                // It's generally better to use knnMatch and apply Lowe's ratio test for better quality matches
+                // k=2 means find the two best matches for each descriptor
+                matcher.knnMatch(orb_referenceDescriptors_, currentDescriptors, knn_matches, 2);
                 
-                // If not enough features, can't stabilize
-                if (sift_currentKeypoints.size() < 10 || sift_referenceKeypoints_.size() < 10) {
-                    std::cout << "Not enough features for FULL_LOCK" << std::endl;
-                    return previouslyReturnedH; 
+                // Filter matches using Lowe's ratio test
+                for (size_t i = 0; i < knn_matches.size(); i++) {
+                    if (knn_matches[i].size() == 2) { // Ensure we have two matches
+                        if (knn_matches[i][0].distance < LOWE_RATIO_THRESH * knn_matches[i][1].distance) {
+                            good_matches.push_back(knn_matches[i][0]);
+                        }
+                    }
                 }
+                std::cout << "Good ORB matches after ratio test: " << good_matches.size() << std::endl;
+                 if (good_matches.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) {
+                     std::cout << "Not enough good ORB matches for FULL_LOCK" << std::endl;
+                     return previouslyReturnedH;
+                 }
 
-                // Match features using FlannBasedMatcher
-                cv::FlannBasedMatcher matcher;
+            } else { // SIFT_FULL_LOCK
+                cv::FlannBasedMatcher matcher; // SIFT typically uses FlannBasedMatcher
                 std::vector<cv::DMatch> matches;
-                matcher.match(sift_referenceDescriptors_, sift_currentDescriptors, matches);
-
-                // Calculate min and max distances between keypoints
-                double max_dist = 0;
-                double min_dist = 1e9;
-                for (int i = 0; i < sift_referenceDescriptors_.rows; i++) {
-                    double dist = matches[i].distance;
-                    if (dist < min_dist) min_dist = dist;
-                    if (dist > max_dist) max_dist = dist;
-                }
+                matcher.match(sift_referenceDescriptors_, currentDescriptors, matches);
 
                 // Compute average distance among matches[i]
                 double avg_dist = 0;
@@ -465,129 +515,95 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
                 avg_dist /= sift_referenceDescriptors_.rows;
 
                 // Store good matches based on distance
-                std::vector<cv::DMatch> good_matches;
                 for (int i = 0; i < sift_referenceDescriptors_.rows; i++) {
-                    if (matches[i].distance <= std::max(avg_dist, 0.02)) {
+                    if (matches[i].distance <= std::max(avg_dist * 0.5, 0.02)) { // Adjusted threshold
                         good_matches.push_back(matches[i]);
                     }
                 }
-
-                int pct_good_matches = round(100.0 * (double)good_matches.size() / (double)matches.size());
-
-                std::cout << "Total good matches: " << good_matches.size() << ", " << pct_good_matches << std::endl;
-
-                // Extract location of good matches
-                std::vector<cv::Point2f> points1, points2;
-                for (size_t i = 0; i < good_matches.size(); i++) {
-                    refPoints.push_back(sift_referenceKeypoints_[good_matches[i].queryIdx].pt);
-                    currPoints.push_back(sift_currentKeypoints[good_matches[i].trainIdx].pt);
+                int pct_good_matches = matches.empty() ? 0 : round(100.0 * (double)good_matches.size() / (double)matches.size());
+                std::cout << "Total good SIFT matches: " << good_matches.size() << ", " << pct_good_matches << "%" << std::endl;
+                 if (good_matches.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) {
+                    std::cout << "Not enough good SIFT matches for FULL_LOCK" << std::endl;
+                    return previouslyReturnedH;
                 }
-            
-            // CODE FOR ORB-BASED REGISTRATION
-            //     // Match features between reference and current frame
-            //     cv::BFMatcher matcher(cv::NORM_HAMMING);
-            //     std::vector<std::vector<cv::DMatch>> knn_matches;
+            }
+       
+            // Extract location of good matches
+            const auto& refKps = (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? orb_referenceKeypoints_ : sift_referenceKeypoints_;
+            for (size_t i = 0; i < good_matches.size(); i++) {
+                refPoints.push_back(refKps[good_matches[i].queryIdx].pt);
+                currPoints.push_back(currentKeypoints[good_matches[i].trainIdx].pt);
+            }
 
-            //     // It's generally better to use knnMatch and apply Lowe's ratio test for better quality matches
-            //     // k=2 means find the two best matches for each descriptor
-            //     matcher.knnMatch(orb_referenceDescriptors_, orb_currentDescriptors, knn_matches, 2);
-                
-            //     // Filter matches using Lowe's ratio test
-            //     std::vector<cv::DMatch> good_matches;
-            //     for (size_t i = 0; i < knn_matches.size(); i++) {
-            //         if (knn_matches[i].size() == 2) { // Ensure we have two matches
-            //             if (knn_matches[i][0].distance < LOWE_RATIO_THRESH * knn_matches[i][1].distance) {
-            //                 good_matches.push_back(knn_matches[i][0]);
-            //             }
-            //         } else if (knn_matches[i].size() == 1) { // Sometimes only one match is found
-            //             // You might decide to keep it if it's the only one, 
-            //             // or if your thresholding for "good" matches is different.
-            //             // For robustness, usually, you'd prefer pairs for the ratio test.
-            //             // For this example, we'll only take matches that passed the ratio test with 2 neighbors.
-            //         }
-            //     }
-            //     std::cout << "Good matches after ratio test: " << good_matches.size() << std::endl;
-
-            //     if (good_matches.size() < 10) {
-            //         std::cout << "Not enough good matches for FULL_LOCK" << std::endl;
-            //         return previouslyReturnedH;
-            //     }
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error in FULL_LOCK calculation: " << e.what() << std::endl;
+            return previouslyReturnedH;
+        }
         
-            //     // Extract location of good matches
-            //     for (size_t i = 0; i < good_matches.size(); i++) {
-            //         refPoints.push_back(orb_referenceKeypoints_[good_matches[i].queryIdx].pt);
-            //         currPoints.push_back(orb_currentKeypoints[good_matches[i].trainIdx].pt);
-            //     }
+        // Compute homography from reference to current (direct mapping)
+        cv::Mat H_prev2current = cv::Mat::eye(3, 3, CV_64F);
 
-            }
-            catch (const std::exception& e) {
-                std::cerr << "Error in FULL_LOCK calculation: " << e.what() << std::endl;
-                return previouslyReturnedH;
-            }
-            
-            // Compute homography from reference to current (direct mapping)
-            cv::Mat H_prev2current = cv::Mat::eye(3, 3, CV_64F);
+        if (refPoints.size() < MIN_POINTS_FOR_MOTION_ESTIMATION)
+        {
+            std::cerr << "Error: not enough keypoint matches to estimate motion: " << std::endl;
+            return previouslyReturnedH; 
+        }
+        
+        cv::Mat M = cv::estimateAffinePartial2D(refPoints, currPoints, cv::noArray(), ROBUST_METHOD_MOTION_ESTIMATION, MAX_RANSAC_REPROJ_THRESHOLD);
 
-            if (refPoints.size() < MIN_POINTS_FOR_MOTION_ESTIMATION)
-            {
-                std::cerr << "Error: not enough keypoint matches to estimate motion: " << std::endl;
-                return previouslyReturnedH; 
-            }
-            
-            cv::Mat M = cv::estimateAffinePartial2D(refPoints, currPoints, cv::noArray(), ROBUST_METHOD_MOTION_ESTIMATION, MAX_RANSAC_REPROJ_THRESHOLD);
-
-            if (!M.empty() && cv::checkRange(M)) {
-                if (M.rows == 2 && M.cols == 3) {
-                    // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
-                    H_prev2current = cv::Mat::eye(3, 3, CV_64F);
-                    M.copyTo(H_prev2current(cv::Rect(0, 0, 3, 2)));
-                } else { // M is already a 3x3 homography
-                    M.copyTo(H_prev2current);
-                }
-            } 
-            else{
-                std::cout << "Failed to compute homography for FULL_LOCK" << std::endl;
-                return previouslyReturnedH;
-            }
-
-            HomographyParameters params;
-            cv::Point2d rot_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
-
-            if(decomposeHomography(H_prev2current, params, rot_center))
-            {
-                params.s = 1.0; // kill scaling, it is typically unstable
-                H_prev2current = composeHomography(params, rot_center);
-
-                cv::Mat H_prev2current_float;
-                H_prev2current.convertTo(H_prev2current_float, CV_32FC1);
-
-                H_prev2current_float.rows = 2;
-
-                // try
-                // {
-                //     cv::findTransformECC(referenceGray_, currentGray, H_prev2current_float, cv::MOTION_EUCLIDEAN,
-                //                     cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 100, 0.001),
-                //                     cv::noArray());
-                // }
-                // catch(const std::exception& e)
-                // {
-                //     std::cerr << e.what() << std::endl;
-                // }
-                
-                
-
-                H_prev2current_float.convertTo(H_prev2current_float, CV_64FC1);
-
+        if (!M.empty() && cv::checkRange(M)) {
+            if (M.rows == 2 && M.cols == 3) {
+                // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
                 H_prev2current = cv::Mat::eye(3, 3, CV_64F);
-                H_prev2current_float.copyTo(H_prev2current(cv::Rect(0, 0, 3, 2)));
-
-                previouslyReturnedH = H_prev2current.inv(); // inverts to current to previous 
+                M.copyTo(H_prev2current(cv::Rect(0, 0, 3, 2)));
+            } else { // M is already a 3x3 homography
+                M.copyTo(H_prev2current);
             }
-            
+        } 
+        else{
+            std::cout << "Failed to compute homography for FULL_LOCK" << std::endl;
             return previouslyReturnedH;
         }
 
+        HomographyParameters params;
+        cv::Point2d rot_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
+
+        if(decomposeHomography(H_prev2current, params, rot_center))
+        {
+            params.s = 1.0; // kill scaling, it is typically unstable
+            H_prev2current = composeHomography(params, rot_center);
+
+            cv::Mat H_prev2current_float;
+            H_prev2current.convertTo(H_prev2current_float, CV_32FC1);
+
+            H_prev2current_float.rows = 2;
+
+            // try
+            // {
+            //     cv::findTransformECC(referenceGray_, currentGray, H_prev2current_float, cv::MOTION_EUCLIDEAN,
+            //                     cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 100, 0.001),
+            //                     cv::noArray());
+            // }
+            // catch(const std::exception& e)
+            // {
+            //     std::cerr << e.what() << std::endl;
+            // }
+            
+            
+
+            H_prev2current_float.convertTo(H_prev2current_float, CV_64FC1);
+
+            H_prev2current = cv::Mat::eye(3, 3, CV_64F);
+            H_prev2current_float.copyTo(H_prev2current(cv::Rect(0, 0, 3, 2)));
+
+            previouslyReturnedH = H_prev2current.inv(); // inverts to current to previous 
+        }
+        
+        return previouslyReturnedH;
     }
+    // Add a default return for safety, though all paths should be covered.
+    return cv::Mat::eye(3,3,CV_64F);
 }
 
 cv::Mat Stabilizer::calculateGlobalSmoothingStabilization(size_t presentation_frame_idx) {
@@ -660,12 +676,6 @@ cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_s
         H_stabilize_scaled_magnified.at<double>(0, 2) = 0.5 * frame.cols;
         H_stabilize_scaled_magnified.at<double>(1, 2) = 0.5 * frame.rows;
 
-        //cv::warpPerspective(stabilized, H_stabilize_scaled_magnified, H_stabilize_scaled, frame.size());
-
-        // cv::imshow("warped_image", warped_image);
-        // cv::imshow("stabilized", H_stabilize_scaled_magnified);
-        // cv::waitKey(0);
-        
         // Create a mask by transforming the frame corners
         const int BORDER_SIZE = 10;
         cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
@@ -982,7 +992,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
 
     // Calculate stabilization transform based on selected mode
     switch (stabilizationMode_) {
-        case StabilizationMode::FULL_LOCK:
+        case StabilizationMode::ACCUMULATED_FULL_LOCK:
             H_stabilize = H_lock; // simply use the full lock transform
             break;
         case StabilizationMode::TRANSLATION_LOCK:
