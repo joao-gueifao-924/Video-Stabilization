@@ -7,7 +7,6 @@
 #include <vector>
 #include <cmath>
 #include <stdexcept>
-#include <numeric> // For std::accumulate
 #include <deque>   // Include deque
 #include <iostream> // For potential debug/error messages
 #include <chrono>   // Include chrono for timing
@@ -63,6 +62,8 @@ void Stabilizer::setStabilizationMode(StabilizationMode mode) {
         referenceGray_ = cv::Mat();
         orb_referenceKeypoints_.clear();
         orb_referenceDescriptors_ = cv::Mat();
+
+        accumulatedTransform_ = Transformation();
 
         stabilizationMode_ = mode;
         std::cout << "Stabilization mode changed to: ";

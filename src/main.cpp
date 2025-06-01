@@ -141,8 +141,7 @@ int main() {
         
       // --- Stabilization Controls ---
       case 'X': // Reset stabilizer
-        stabilizer.reset();
-        originalFrameBuffer.clear();
+        stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
         break;
       case 'F': // Full lock stabilization
         stabilizer.setStabilizationMode(StabilizationMode::FULL_LOCK);
