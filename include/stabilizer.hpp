@@ -141,6 +141,8 @@ private:
     std::vector<cv::KeyPoint> sift_referenceKeypoints_; // Reference frame keypoints
     cv::Mat sift_referenceDescriptors_; // Reference frame descriptors
 
+    cv::Ptr<cv::ORB> orb_; // ORB feature detector
+    cv::Ptr<cv::SIFT> sift_; // SIFT feature detector
 
     std::vector<cv::Point2f> gftt_reference_corners_;
 
