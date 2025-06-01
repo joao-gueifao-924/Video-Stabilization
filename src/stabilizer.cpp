@@ -209,11 +209,14 @@ cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& previousPoint
     // Let's kill isotropic scaling from the estimated motion (it is typically unstable) - this enhances visual stability.
     // In the future, we could implement a estimateRigidBodyMotion() that would fit in-image-plane rotation and translation
     // with fixed unitary scaling factor, so that error is minimized.
+    // Define center of scaling (and rotation) as the center of the image. If we don't use this, we
+    // we will see weird scaling artifacts coming from the top left corner of the image when we kill scaling.
+    cv::Point2d rot_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
     HomographyParameters homography_params;
-    if(decomposeHomography(H_prev2curr, homography_params))
+    if(decomposeHomography(H_prev2curr, homography_params, rot_center))
     {
         homography_params.s = 1.0;
-        H_prev2curr = composeHomography(homography_params);
+        H_prev2curr = composeHomography(homography_params, rot_center);
     }
     else
     {
@@ -547,10 +550,12 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             }
 
             HomographyParameters params;
-            if(decomposeHomography(H_prev2current, params))
+            cv::Point2d rot_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
+
+            if(decomposeHomography(H_prev2current, params, rot_center))
             {
                 params.s = 1.0; // kill scaling, it is typically unstable
-                H_prev2current = composeHomography(params);
+                H_prev2current = composeHomography(params, rot_center);
 
                 cv::Mat H_prev2current_float;
                 H_prev2current.convertTo(H_prev2current_float, CV_32FC1);

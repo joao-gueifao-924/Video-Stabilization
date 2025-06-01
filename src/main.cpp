@@ -1,5 +1,4 @@
 #include "stabilizer.hpp"
-#include "tracker.hpp"
 #include "camera_engine.hpp"
 #include <opencv2/opencv.hpp>
 #include <iostream>
