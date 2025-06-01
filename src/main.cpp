@@ -13,6 +13,16 @@ const static bool USE_VIDEO_CAMERA = true;
 int main() {
   double fps = 0.0;
 
+  // Default Camera Parameters
+  const Point3d default_camera_pos(0.5, -0.3, 0.7);
+  const double default_pan = 0.0;
+  const double default_tilt = 180.0;
+  const double default_roll = 180.0;
+  const double default_focalLength = 1000.0;
+  const Size default_sensorResolution(1280, 720);
+  const CameraEngine::CameraParams default_camera_params(default_camera_pos, default_pan, default_tilt, default_roll, default_focalLength, default_sensorResolution);
+
+
   // TODO: only init one of these, not both
   CameraEngine cameraEngine("/home/joao/Downloads/pexels-pixabay-326055.jpg", 10.0);
   VideoCapture cap("/home/joao/Downloads/IMG_4108.MOV");
@@ -31,17 +41,14 @@ int main() {
     int frameHeight = static_cast<int>(cap.get(CAP_PROP_FRAME_HEIGHT));
     fps = static_cast<double>(cap.get(CAP_PROP_FPS));
 
+    std::cout << "Frame width: " << frameWidth << std::endl;
+    std::cout << "Frame height: " << frameHeight << std::endl;
+    std::cout << "FPS: " << fps << std::endl;
+
   } else { // use 3D camera engine simulation
     // Create the camera engine with floor texture
 
-    Point3d camera_pos(0.5, -0.3, 0.7);
-    double pan = 0.0; 
-    double tilt = 180.0;
-    double roll = 180.0;
-    double focalLength = 1000.0;
-    Size sensorResolution(1280, 720);
-    CameraEngine::CameraParams cameraParams(camera_pos, pan, tilt, roll, focalLength, sensorResolution);
-    cameraEngine.setCameraParams(cameraParams);
+    cameraEngine.setCameraParams(default_camera_params);
     fps = 30.0; // Simulated camera framerate
   }
   
@@ -70,6 +77,7 @@ int main() {
        << " T: Translation lock stabilization mode\n"
        << " R: Rotation lock stabilization mode\n"
        << " G: Global smoothing stabilization mode\n"
+       << " P: Reset Camera Pose\n"
        << " ESC: Exit\n" << endl;
 
   // Buffer to store original frames for delay matching
@@ -137,6 +145,13 @@ int main() {
           cameraEngine.moveDown(1.0);
           cameraMoved = true;
           break;
+        case 'P': // Reset Camera Pose
+          {
+            cameraEngine.setCameraParams(default_camera_params);
+            cameraMoved = true; // Indicate camera has changed
+            cout << "Camera pose reset." << endl;
+          }
+          break;
       }
     }
     switch (toupper(key)) {
@@ -169,7 +184,8 @@ int main() {
 
     
     // --- Apply Stabilization ---
-    Mat stabilized = stabilizer.stabilizeFrame(frame);
+    cv::Mat stabilized = frame;
+    stabilized = stabilizer.stabilizeFrame(frame);
     
     // Store original frame in buffer
     originalFrameBuffer.push_back(frame.clone());

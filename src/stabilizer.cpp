@@ -16,9 +16,12 @@ const int MIN_POINTS_FOR_MOTION_ESTIMATION = 10;
 const bool REFINE_WITH_ECC = false;
 
 Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight)
-    : totalPastFrames_(pastFrames), totalFutureFrames_(futureFrames), 
+    : totalPastFrames_(pastFrames), totalFutureFrames_(futureFrames),
       workingHeight_(workingHeight)
 {
+    if (pastFrames == 0 && futureFrames == 0) 
+        throw std::invalid_argument("Stabilizer: pastFrames and futureFrames cannot both be 0");
+
     reset();
     last_print_time_ = now();
 }
@@ -383,25 +386,25 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         std::vector<cv::Point2f> refPoints, currPoints;
 
         // ORB parameters (defined here for clarity, used if mode is ORB_FULL_LOCK)
-        const int ORB_MAX_FEATURES = 2500;
-        const float ORB_SCALE_FACTOR = 1.2f;
-        const int ORB_PYRAMID_LEVELS = 12;
-        const int ORB_EDGE_THRESHOLD = 31;
-        const int ORB_FIRST_LEVEL = 0;
-        const int ORB_WTA_K = 2;
-        const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE;
-        const int ORB_PATCH_SIZE = 31;
-        const int ORB_FAST_THRESHOLD = 20;
-        const float LOWE_RATIO_THRESH = 0.6f;
-        const float MAX_ORB_KEYPOINT_SIZE_RATIO = 0.10f;
+        const int ORB_MAX_FEATURES = 2500;        // The maximum number of features to retain
+        const float ORB_SCALE_FACTOR = 1.2f;      // Pyramid decimation ratio, greater than 1
+        const int ORB_PYRAMID_LEVELS = 12;        // The number of pyramid levels
+        const int ORB_EDGE_THRESHOLD = 31;        // Size of the border where features are not detected
+        const int ORB_FIRST_LEVEL = 0;            // The level of pyramid to put source image at
+        const int ORB_WTA_K = 2;                  // The number of points that produce each element of the oriented BRIEF descriptor
+        const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE;  // The default HARRIS_SCORE=0, FAST_SCORE=1
+        const int ORB_PATCH_SIZE = 31;            // Size of the patch used by the oriented BRIEF descriptor
+        const int ORB_FAST_THRESHOLD = 20;        // The FAST threshold for feature detection
+        const float LOWE_RATIO_THRESH = 0.6f;     // Threshold for Lowe's ratio test in feature matching
+        const float MAX_ORB_KEYPOINT_SIZE_RATIO = 0.10f;  // Maximum allowed keypoint size as ratio of image height
 
         // SIFT parameters (defined here for clarity, used if mode is SIFT_FULL_LOCK)
-        const int SIFT_N_FEATURES = 2500;        // number of best features to retain (0 = unlimited)
+        const int SIFT_N_FEATURES = 2500;      // number of best features to retain (0 = unlimited)
         const int SIFT_N_OCTAVE_LAYERS = 3;    // number of layers in each octave
-        const double SIFT_CONTRAST_THRESHOLD = 0.04; // contrast threshold
-        const double SIFT_EDGE_THRESHOLD = 5; // edge threshold  
-        const double SIFT_SIGMA = 1.2;       // sigma of Gaussian applied to first octave
-        const float SIFT_MAX_KEYPOINT_SIZE_RATIO = 0.05f;
+        const double SIFT_CONTRAST_THRESHOLD = 0.04; // filter out weak features in semi-uniform (low-contrast) regions (higher values yield less features)
+        const double SIFT_EDGE_THRESHOLD = 5;  // filter out edge-like features versus corner-like features (higher values yield more features)
+        const double SIFT_SIGMA = 1.2;         // sigma of Gaussian applied to first octave
+        const float SIFT_MAX_KEYPOINT_SIZE_RATIO = 0.05f; // Maximum allowed keypoint size as ratio of image height
 
         // RANSAC parameters (common for both ORB and SIFT motion estimation)
         const double MAX_RANSAC_REPROJ_THRESHOLD = 5.0;
@@ -998,10 +1001,14 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     // Update transformations window
     updateTransformations(H_prev2curr, current_idx);
 
-    assert(stabilizationWindow_.frames.size() == stabilizationWindow_.transformations.size() + 1);
+    // These two would be be false if both totalPastFrames_ and totalFutureFrames_ were 0.
+    assert(stabilizationWindow_.frames.size() >= 2);
+    assert(stabilizationWindow_.transformations.size() >= 1); // at least one transformation between the first and last frame
+
+    assert(stabilizationWindow_.frames.size() == stabilizationWindow_.transformations.size() + 1); // one more frame than transformations
     assert(stabilizationWindow_.frames.front().frame_idx == stabilizationWindow_.transformations.front().from_frame_idx);
     assert(stabilizationWindow_.frames.back().frame_idx == stabilizationWindow_.transformations.back().to_frame_idx);
-    
+
     // Determine which frame to present
     size_t presentation_frame_idx = 0;
     if (stabilizationWindow_.frames.size() > totalFutureFrames_) {
@@ -1050,8 +1057,16 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
             H_stabilize = H_rotation_lock;
             break;
         case StabilizationMode::GLOBAL_SMOOTHING:
-        default:
             H_stabilize = H_global_smoothing;
+            break;
+        case StabilizationMode::ORB_FULL_LOCK:
+            H_stabilize = H_lock;
+            break;
+        case StabilizationMode::SIFT_FULL_LOCK:
+            H_stabilize = H_lock;
+            break;
+        default:
+            throw std::invalid_argument("Stabilizer: Invalid stabilization mode");
             break;
     }
     
