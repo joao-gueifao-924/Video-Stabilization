@@ -9,7 +9,6 @@ namespace VideoStabilizer {
 // Minimum window size in seconds to ensure correct stabilizer runtime
 static const double MIN_STABILIZER_WINDOW_SECONDS = 0.030; // 30 milliseconds minimum
 
-// Function to print usage information
 void printUsage(const char* programName) {
   cout << "Usage: " << programName << " <input_mode> [options]" << endl;
   cout << endl;
@@ -33,7 +32,6 @@ void printUsage(const char* programName) {
   cout << "  " << programName << " --simulator texture.jpg --working-height 480" << endl;
 }
 
-// Function to parse command line arguments
 bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
   // Check for help request
   for (int i = 1; i < argc; ++i) {
@@ -299,7 +297,6 @@ bool initializeInputSource(const InputConfig& config, double& fps,
   return true;
 }
 
-// Function to setup stabilizer and display windows
 Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames, 
                                     int working_height) {
   Stabilizer stabilizer(past_frames, future_frames, working_height);
@@ -327,7 +324,6 @@ Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames,
   return stabilizer;
 }
 
-// Function to handle camera movement in simulator mode
 bool handleCameraMovement(int key, std::shared_ptr<CameraEngine> cameraEngine, 
                          const CameraEngine::CameraParams& default_camera_params) {
   if (!cameraEngine) return false;
@@ -372,7 +368,6 @@ bool handleCameraMovement(int key, std::shared_ptr<CameraEngine> cameraEngine,
   return has_camera_moved;
 }
 
-// Function to handle stabilization controls
 void handleStabilizationControls(int key, Stabilizer& stabilizer) {
   switch (toupper(key)) {
     case 'X':
@@ -399,7 +394,6 @@ void handleStabilizationControls(int key, Stabilizer& stabilizer) {
   }
 }
 
-// Function to capture frame from input source
 bool captureFrame(const InputConfig& config, VideoCapture& cap,
                  std::shared_ptr<CameraEngine> cameraEngine, cv::Mat& frame) {
   if (config.mode == InputMode::CAMERA || config.mode == InputMode::FILE) {
@@ -422,7 +416,6 @@ bool captureFrame(const InputConfig& config, VideoCapture& cap,
   return true;
 }
 
-// Function to add text overlays to frame
 void addFrameOverlays(cv::Mat& frame, const InputConfig& config, 
                      std::shared_ptr<CameraEngine> cameraEngine, double fps) {
   if (config.mode == InputMode::SIMULATOR) {
@@ -463,7 +456,6 @@ void addFrameOverlays(cv::Mat& frame, const InputConfig& config,
           Scalar(0, 255, 0), 1);
 }
 
-// Function to process and display frames
 void processAndDisplayFrames(cv::Mat frame, Stabilizer& stabilizer, 
                            std::deque<cv::Mat>& originalFrameBuffer, 
                            int future_frames, const InputConfig& config, 
