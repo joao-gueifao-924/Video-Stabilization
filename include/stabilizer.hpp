@@ -17,13 +17,13 @@ enum class StabilizationMode {
 };
 
 struct HomographyParameters {
-    double s{1};       // scaling factor
-    double theta{0};   // in-image-plane rotation angle
+    double s{1.0};       // scaling factor
+    double theta{0.0};   // in-image-plane rotation angle
     //cv::Point2d c;  // center of scaling and rotation
-    double k{0};       // anisotropy scaling factor
-    double delta{0};   // shear factor
-    cv::Vec2d t{0,0};    // translation vector
-    cv::Vec2d v{0,0};    // horizon line shift vector
+    double k{1.0};       // anisotropy scaling factor (k1, k2=1/k1). Default 1.0 means no anisotropy.
+    double delta{0.0};   // shear factor
+    cv::Vec2d t{0.0,0.0};    // translation vector
+    cv::Vec2d v{0.0,0.0};    // horizon line shift vector
 
     // Print to terminal for debugging:
     std::string print() const {
@@ -119,7 +119,7 @@ private:
     size_t totalFutureFrames_;
     int workingHeight_; // Target height for internal processing
     double scaleFactor_; // Scale factor between original and working resolution
-    cv::Size originalSize_; // Original frame size
+    cv::Size original_frame_size_; // Original frame size
     cv::Size workingSize_; // Working frame size
     
     StabilizationWindow stabilizationWindow_; // Single instance of StabilizationWindow

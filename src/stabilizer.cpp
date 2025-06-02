@@ -22,6 +22,12 @@ Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight
     if (pastFrames == 0 && futureFrames == 0) 
         throw std::invalid_argument("Stabilizer: pastFrames and futureFrames cannot both be 0");
 
+    const double min_working_height = 90.0; // This is the minimum working height for the stabilizer to work properly
+    if (workingHeight <= min_working_height)
+        throw std::invalid_argument("Stabilizer: workingHeight must be greater than " + std::to_string(min_working_height));
+    if (workingHeight > 2160) // just some sobe big arbitrary number but still sensible
+        throw std::invalid_argument("Stabilizer: workingHeight must be no more than 2160");
+
     reset();
     last_print_time_ = now();
 }
@@ -32,7 +38,7 @@ void Stabilizer::reset() {
     trail_background_ = cv::Mat();
     stabilizationWindow_.transformations.clear();
     stabilizationWindow_.frames.clear();
-    originalSize_ = cv::Size(0, 0);
+    original_frame_size_ = cv::Size(0, 0);
     workingSize_ = cv::Size(0, 0);
     scaleFactor_ = 1.0;
 
@@ -107,17 +113,27 @@ void Stabilizer::setStabilizationMode(StabilizationMode mode) {
 }
 
 void Stabilizer::initializeFrame(const cv::Mat& frame) {
-    // Store original size if first frame or size has changed
-    if (originalSize_.width != frame.cols || originalSize_.height != frame.rows) {
-        originalSize_ = frame.size();
+    if (frame.rows <= 10 || frame.cols <= 10) {
+        throw std::invalid_argument("Stabilizer: Frame has invalid size. Rows: " + std::to_string(frame.rows) + ", Cols: " + std::to_string(frame.cols));
+    }
+
+    // Store original size if first frame. Error out if size has changed.
+    const bool frame_size_is_already_set = original_frame_size_.width > 0 && original_frame_size_.height > 0;
+    const bool frame_size_has_changed = original_frame_size_.width != frame.cols || original_frame_size_.height != frame.rows;
+    
+    if (frame_size_has_changed) {
+        if (frame_size_is_already_set) { 
+            throw std::invalid_argument("Stabilizer: Frame size has changed. This is not supported.");
+        }
+        original_frame_size_ = frame.size();
         // Calculate working size maintaining aspect ratio
         scaleFactor_ = static_cast<double>(workingHeight_) / frame.rows;
         workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), workingHeight_);
     }
     
     // Initialize or resize trail background
-    if (trail_background_.empty() || trail_background_.size() != originalSize_) {
-        trail_background_ = cv::Mat::zeros(originalSize_, frame.type());
+    if (trail_background_.empty() || trail_background_.size() != original_frame_size_) {
+        trail_background_ = cv::Mat::zeros(original_frame_size_, frame.type());
     }
 }
 
@@ -297,6 +313,7 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             accumulatedTransform_.to_frame_idx = frame_idx;
         }
         else {
+            assert(presentation_frame_idx > 0);
             Transformation next_transform = stabilizationWindow_.transformations[presentation_frame_idx -1];
             assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
 
@@ -309,7 +326,31 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             // We now have the full accumulated transformation from the anchor frame to the presentation frame
             // Let's decompose it to get rotation angle and translation vector
             HomographyParameters homography_params_lock;
-            bool is_successful = decomposeHomography(accumulatedTransform_.H, homography_params_lock, cv::Point2d(0,0));
+            
+            // Ensure workingSize_ is valid before calculating image_center
+            if (workingSize_.width <= 0 || workingSize_.height <= 0) {
+                throw std::runtime_error("Stabilizer::calculateFullLockStabilization: workingSize_ is invalid. Width: " 
+                                        + std::to_string(workingSize_.width) + ", Height: " + std::to_string(workingSize_.height));
+            }
+            const cv::Point2d image_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
+
+            // Check if accumulatedTransform_.H is valid before decomposition
+            if (accumulatedTransform_.H.size() != cv::Size(3,3) || !cv::checkRange(accumulatedTransform_.H)) {
+                 throw std::runtime_error("Warning: accumulatedTransform_.H is empty or contains NaN/Inf before decomposition. Frame idx: " + std::to_string(frame_idx));
+            }
+
+            if (!decomposeHomography(accumulatedTransform_.H, homography_params_lock, image_center)) {
+                throw std::runtime_error("Warning: decomposeHomography failed for frame_idx: " + std::to_string(frame_idx));
+            }
+
+            // Check homography_params_lock.t for NaN/Inf as an extra precaution, though decomposeHomography should ideally handle it
+            if (!cv::checkRange(cv::Mat(homography_params_lock.t))) { // Convert Vec2d to Mat for checkRange
+                throw std::runtime_error("Warning: homography_params_lock.t contains NaN/Inf after successful decomposition. Frame idx: " + std::to_string(frame_idx));
+            }
+            // Also check other critical params from decomposition
+            if (!std::isfinite(homography_params_lock.s) || !std::isfinite(homography_params_lock.theta)) {
+                throw std::runtime_error("Warning: homography_params_lock.s or .theta is NaN/Inf. Frame idx: " + std::to_string(frame_idx));
+            }
 
             double accumulated_rotation_angle = homography_params_lock.theta;
             cv::Vec2d accumulated_translation = homography_params_lock.t;
@@ -330,7 +371,19 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             H_translation_lock.at<double>(0, 2) = -accumulated_translation(0);
             H_translation_lock.at<double>(1, 2) = -accumulated_translation(1);
 
-            cv::Mat H_lock = H_translation_lock;
+            HomographyParameters derotate_params;
+            // Set the desired de-rotation angle
+            if (!std::isfinite(accumulated_rotation_angle)) {
+                 throw std::runtime_error("Critical: accumulated_rotation_angle is NaN/Inf before creating derotate_params. Frame idx: " + std::to_string(frame_idx));
+            }
+            derotate_params.theta = -accumulated_rotation_angle;
+            
+            cv::Mat H_derotate = composeHomography(derotate_params, image_center);
+            if (!cv::checkRange(H_derotate)) {
+                 throw std::runtime_error("Critical: H_derotate matrix contains NaN/Inf. Frame idx: " + std::to_string(frame_idx));
+            }
+            
+            cv::Mat H_lock = H_translation_lock * H_derotate;
 
 
 
@@ -879,7 +932,15 @@ cv::Mat Stabilizer::copyFeathered(cv::Mat foreground, cv::Mat background_image, 
 
     cv::Mat warped_foreground;
     // Warp the foreground onto a canvas the size of the background
-    cv::warpPerspective(foreground, warped_foreground, H, foreground.size());
+
+    if (foreground.size() != background_image.size()) {
+        throw std::invalid_argument("Stabilizer: copyFeathered: foreground and background_image must have the same size");
+    }
+    if (H.size() != cv::Size(3, 3) || H.type() != CV_64F || !cv::checkRange(H)) {
+        throw std::invalid_argument("Stabilizer: copyFeathered: Bad homography matrix H.");
+    }
+
+    cv::warpPerspective(foreground, warped_foreground, H, background_image.size());
 
     cv::Mat warped_foreground_float;
     warped_foreground.convertTo(warped_foreground_float, CV_32FC3);
@@ -1022,7 +1083,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     cv::Mat H_global_smoothing = calculateGlobalSmoothingStabilization(presentation_frame_idx);
     cv::Mat H_lock = calculateFullLockStabilization(presentation_frame_idx);
     
-    cv::Point2d rot_center = cv::Point2d(workingSize_.width / 2, workingSize_.height / 2);
+    cv::Point2d rot_center = cv::Point2d(workingSize_.width / 2.0, workingSize_.height / 2.0);
     
     HomographyParameters homography_params_lock;
     if(!decomposeHomography(H_lock, homography_params_lock))
@@ -1091,20 +1152,6 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
         cv::Mat warped_image;
         cv::warpPerspective(presentation_image, warped_image, H_stabilize_scaled, frame.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, avg_color);
         presentation_output = warped_image;
-        # if 0
-            // get the average color of the presentation image
-            cv::Mat presentation_image_avg_color;
-            presentation_output = cv::Mat(frame.size(), CV_8UC3, avg_color);
-            
-            cv::Mat warped_image_mask = createWarpedMask(presentation_image, H_stabilize_scaled, 0);
-            warped_image.copyTo(presentation_output, warped_image_mask);
-            cv::resize(presentation_output, presentation_output, cv::Size(360 * frame.cols / presentation_image.cols, 360 * frame.rows / presentation_image.rows), 0, 0, cv::INTER_LINEAR);
-            cv::GaussianBlur(presentation_output, presentation_output, cv::Size(25, 25), 0);
-            cv::resize(presentation_output, presentation_output, frame.size(), 0, 0, cv::INTER_LINEAR);
-
-            warped_image_mask = createWarpedMask(presentation_image, H_stabilize_scaled, 20);
-            warped_image.copyTo(presentation_output, warped_image_mask);
-        #endif
     #endif
     
     // Detect new features for next frame
@@ -1112,7 +1159,7 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     prevGray_ = gray.clone();
     
     // Print timing information periodically
-    printTimings();
+    //printTimings(); // Keep this commented out when not debugging. Don't remove.
     
     return presentation_output;
 }
