@@ -69,47 +69,46 @@ void Stabilizer::reset() {
 }
 
 void Stabilizer::setStabilizationMode(StabilizationMode mode) {
-    if (stabilizationMode_ != mode) {
+    // Reset variables used for ORB- and SIFT-based motion estimation when switching modes
+    referenceFrameIdx_ = -1; // Reset reference frame
+    referenceGray_ = cv::Mat();
+    orb_referenceKeypoints_.clear();
+    orb_referenceDescriptors_ = cv::Mat();
+    sift_referenceKeypoints_.clear();
+    sift_referenceDescriptors_ = cv::Mat();
 
-        // Reset variables used for ORB- and SIFT-based motion estimation when switching modes
-        referenceFrameIdx_ = -1; // Reset reference frame
-        referenceGray_ = cv::Mat();
-        orb_referenceKeypoints_.clear();
-        orb_referenceDescriptors_ = cv::Mat();
-        sift_referenceKeypoints_.clear();
-        sift_referenceDescriptors_ = cv::Mat();
+    // Reset feature detectors
+    orb_.reset();
+    sift_.reset();
 
-        accumulatedTransform_ = Transformation();
+    accumulatedTransform_ = Transformation();
 
-        stabilizationMode_ = mode;
-        std::cout << "Stabilization mode changed to: ";
-        switch (mode) {
-            case StabilizationMode::ACCUMULATED_FULL_LOCK:
-                std::cout << "ACCUMULATED_FULL_LOCK";
-                break;
-            case StabilizationMode::ORB_FULL_LOCK:
-                std::cout << "ORB_FULL_LOCK";
-                break;
-            case StabilizationMode::SIFT_FULL_LOCK:
-                std::cout << "SIFT_FULL_LOCK";
-                break;
-            case StabilizationMode::TRANSLATION_LOCK:
-                std::cout << "TRANSLATION_LOCK";
-                break;
-            case StabilizationMode::ROTATION_LOCK:
-                std::cout << "ROTATION_LOCK";
-                break;
-            case StabilizationMode::GLOBAL_SMOOTHING:
-                std::cout << "GLOBAL_SMOOTHING";
-                break;
-        }
-
-        std::cout << std::endl;
-
-        // Reset feature detectors
-        orb_.reset();
-        sift_.reset();
+    stabilizationMode_ = mode;
+    std::cout << "Stabilization mode changed to: ";
+    switch (mode) {
+        case StabilizationMode::ACCUMULATED_FULL_LOCK:
+            std::cout << "ACCUMULATED_FULL_LOCK";
+            break;
+        case StabilizationMode::ORB_FULL_LOCK:
+            std::cout << "ORB_FULL_LOCK";
+            break;
+        case StabilizationMode::SIFT_FULL_LOCK:
+            std::cout << "SIFT_FULL_LOCK";
+            break;
+        case StabilizationMode::TRANSLATION_LOCK:
+            std::cout << "TRANSLATION_LOCK";
+            break;
+        case StabilizationMode::ROTATION_LOCK:
+            std::cout << "ROTATION_LOCK";
+            break;
+        case StabilizationMode::GLOBAL_SMOOTHING:
+            std::cout << "GLOBAL_SMOOTHING";
+            break;
     }
+
+    std::cout << std::endl;
+
+
 }
 
 void Stabilizer::initializeFrame(const cv::Mat& frame) {
