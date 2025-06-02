@@ -28,45 +28,9 @@ Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight
     if (workingHeight > 2160) // just some sobe big arbitrary number but still sensible
         throw std::invalid_argument("Stabilizer: workingHeight must be no more than 2160");
 
-    reset();
     last_print_time_ = now();
 }
 
-void Stabilizer::reset() {
-    prevGray_ = cv::Mat();
-    prevPoints_.clear();
-    trail_background_ = cv::Mat();
-    stabilizationWindow_.transformations.clear();
-    stabilizationWindow_.frames.clear();
-    original_frame_size_ = cv::Size(0, 0);
-    workingSize_ = cv::Size(0, 0);
-    scaleFactor_ = 1.0;
-
-    // Reset timing variables
-    gftt_avg_duration_ms_ = milli_duration(0.0);
-    gftt_call_count_ = 0;
-    lk_avg_duration_ms_ = milli_duration(0.0);
-    lk_call_count_ = 0;
-    homography_avg_duration_ms_ = milli_duration(0.0);
-    homography_call_count_ = 0;
-    warp_avg_duration_ms_ = milli_duration(0.0);
-    warp_call_count_ = 0;
-    
-    // Reset ORB- and SIFT-based motion estimation variables
-    referenceFrameIdx_ = -1;
-    referenceGray_ = cv::Mat();
-    orb_referenceKeypoints_.clear();
-    orb_referenceDescriptors_ = cv::Mat();
-    sift_referenceKeypoints_.clear();
-    sift_referenceDescriptors_ = cv::Mat();
-
-    accumulatedTransform_ = Transformation();
-    stabilizationMode_ = StabilizationMode::GLOBAL_SMOOTHING;
-
-    // Reset feature detectors
-    orb_.reset();
-    sift_.reset();
-}
 
 void Stabilizer::setStabilizationMode(StabilizationMode mode) {
     // Reset variables used for ORB- and SIFT-based motion estimation when switching modes

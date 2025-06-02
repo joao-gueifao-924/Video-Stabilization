@@ -33,8 +33,8 @@ struct HomographyParameters {
 
 struct Transformation {
     cv::Mat H;
-    size_t from_frame_idx;
-    size_t to_frame_idx;
+    size_t from_frame_idx{0};
+    size_t to_frame_idx{0};
     
     Transformation inverse() const {
         cv::Mat inv;
@@ -45,7 +45,7 @@ struct Transformation {
 
 struct Frame {
     cv::Mat image;
-    size_t frame_idx;
+    size_t frame_idx{};
 };
 
 struct StabilizationWindow {
@@ -67,9 +67,6 @@ public:
     
     // Process a frame and return the stabilized version
     cv::Mat stabilizeFrame(const cv::Mat& frame);
-    
-    // Reset the stabilizer state
-    void reset();
 
     // Set stabilization mode
     void setStabilizationMode(StabilizationMode mode);
@@ -114,17 +111,16 @@ private:
     std::vector<cv::Point2f> detectNewFeatures(const cv::Mat& gray, cv::Mat mask = cv::Mat());
     
     void printTimings();
-
-    size_t totalPastFrames_;
-    size_t totalFutureFrames_;
-    int workingHeight_; // Target height for internal processing
-    double scaleFactor_; // Scale factor between original and working resolution
-    cv::Size original_frame_size_; // Original frame size
-    cv::Size workingSize_; // Working frame size
+    size_t totalPastFrames_{0};
+    size_t totalFutureFrames_{0};
+    int workingHeight_{360}; // Target height for internal processing
+    double scaleFactor_{1.0}; // Scale factor between original and working resolution
+    cv::Size original_frame_size_{0, 0}; // Original frame size
+    cv::Size workingSize_{0, 0}; // Working frame size
     
     StabilizationWindow stabilizationWindow_; // Single instance of StabilizationWindow
     
-    cv::Mat prevGray_;
+    cv::Mat prevGray_; 
     std::vector<cv::Point2f> prevPoints_;
 
     cv::Mat trail_background_; // Background for the trail effect
@@ -132,11 +128,10 @@ private:
     Transformation accumulatedTransform_; // Store the accumulated transformation for full lock mode
 
     // ORB-based motion estimation variables
-    int64_t referenceFrameIdx_; // Reference frame index for full lock mode
+    int64_t referenceFrameIdx_{-1}; // Reference frame index for full lock mode
     cv::Mat referenceGray_; // Reference frame grayscale image
     std::vector<cv::KeyPoint> orb_referenceKeypoints_; // Reference frame keypoints
     cv::Mat orb_referenceDescriptors_; // Reference frame descriptors
-
 
     std::vector<cv::KeyPoint> sift_referenceKeypoints_; // Reference frame keypoints
     cv::Mat sift_referenceDescriptors_; // Reference frame descriptors
