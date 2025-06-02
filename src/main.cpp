@@ -36,6 +36,9 @@ static const int ESC_KEY = 27;
 //    - Creates precise, controllable camera motion for testing and demonstration
 //    - Specified by simulator flag in command line arguments
 //    - Allows keyboard control of camera position and orientation during runtime
+//
+// Refer to VideoStabilizer::printUsage() for more details on how to construct the 
+// command line arguments.
 // 
 // KEYBOARD CONTROLS:
 // The program supports various keyboard inputs for runtime control:

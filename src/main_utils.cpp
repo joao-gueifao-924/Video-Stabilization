@@ -237,7 +237,6 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
   return true;
 }
 
-// Function to initialize input source based on configuration
 bool initializeInputSource(const InputConfig& config, double& fps, 
                           std::shared_ptr<CameraEngine> cameraEngine, 
                           VideoCapture& cap, 
