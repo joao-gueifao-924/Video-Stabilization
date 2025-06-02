@@ -318,7 +318,7 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
 
             // update the accumulated transform by multiplying it with the transformation
-            accumulatedTransform_.H = accumulatedTransform_.H * next_transform.H;
+            accumulatedTransform_.H = next_transform.H * accumulatedTransform_.H;
             accumulatedTransform_.to_frame_idx = next_transform.to_frame_idx;
         }
 
