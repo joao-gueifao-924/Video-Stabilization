@@ -4,7 +4,7 @@
 #include <iostream>
 #include <chrono> // For timing measurements
 #include <deque> // For frame buffer
-#include <memory> // For std::unique_ptr
+#include <memory> // For std::shared_ptr
 
 using namespace cv;
 using namespace std;
@@ -58,11 +58,13 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
   int totalModeFlags = simulatorModeCount + cameraModeCount + fileModeCount;
 
   if (totalModeFlags == 0) {
-    cerr << "Error: No input mode specified. Use --simulator <path>, --camera <id>, or --file <path>." << endl;
+    cerr << "Error: No input mode specified. Use --simulator <path>, "
+         << "--camera <id>, or --file <path>." << endl;
     return false;
   }
   if (totalModeFlags > 1) {
-    cerr << "Error: Multiple input modes specified. Use only one of --simulator, --camera, or --file." << endl;
+    cerr << "Error: Multiple input modes specified. Use only one of "
+         << "--simulator, --camera, or --file." << endl;
     return false;
   }
 
@@ -89,7 +91,8 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
           return false;
         }
       } else {
-        cerr << "Error: Misplaced or duplicate --simulator flag encountered: " << arg << endl;
+        cerr << "Error: Misplaced or duplicate --simulator flag encountered: "
+             << arg << endl;
         return false;
       }
     } else if (arg == "--camera") {
@@ -100,10 +103,12 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
             config.cameraId = stoi(cameraId_str);
             valueForChosenModeFound = true;
           } catch (const std::invalid_argument& ia) {
-            cerr << "Error: Invalid camera ID for --camera: " << cameraId_str << endl;
+            cerr << "Error: Invalid camera ID for --camera: " 
+                 << cameraId_str << endl;
             return false;
           } catch (const std::out_of_range& oor) {
-            cerr << "Error: Camera ID out of range for --camera: " << cameraId_str << endl;
+            cerr << "Error: Camera ID out of range for --camera: " 
+                 << cameraId_str << endl;
             return false;
           }
         } else {
@@ -111,7 +116,8 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
           return false;
         }
       } else {
-        cerr << "Error: Misplaced or duplicate --camera flag encountered: " << arg << endl;
+        cerr << "Error: Misplaced or duplicate --camera flag encountered: "
+             << arg << endl;
         return false;
       }
     } else if (arg == "--file") {
@@ -124,7 +130,8 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
           return false;
         }
       } else {
-        cerr << "Error: Misplaced or duplicate --file flag encountered: " << arg << endl;
+        cerr << "Error: Misplaced or duplicate --file flag encountered: "
+             << arg << endl;
         return false;
       }
     } else {
@@ -135,17 +142,20 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
     }
   }
 
-  // Validate that the required value for the chosen mode was actually found and set
+  // Validate that the required value for the chosen mode was actually found
   if (config.mode == InputMode::SIMULATOR && config.path.empty()) {
-    cerr << "Error: File path for --simulator was not successfully parsed or provided after the flag." << endl;
+    cerr << "Error: File path for --simulator was not successfully parsed "
+         << "or provided after the flag." << endl;
     return false;
   }
   if (config.mode == InputMode::FILE && config.path.empty()) {
-    cerr << "Error: File path for --file was not successfully parsed or provided after the flag." << endl;
+    cerr << "Error: File path for --file was not successfully parsed "
+         << "or provided after the flag." << endl;
     return false;
   }
   if (config.mode == InputMode::CAMERA && !valueForChosenModeFound) {
-    cerr << "Error: Camera ID for --camera was not successfully parsed or provided after the flag." << endl;
+    cerr << "Error: Camera ID for --camera was not successfully parsed "
+         << "or provided after the flag." << endl;
     return false;
   }
 
@@ -154,7 +164,7 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
 
 // Function to initialize input source based on configuration
 bool initializeInputSource(const InputConfig& config, double& fps, 
-                          std::unique_ptr<CameraEngine>& cameraEngine, 
+                          std::shared_ptr<CameraEngine> cameraEngine, 
                           VideoCapture& cap, 
                           const CameraEngine::CameraParams& default_camera_params) {
   
@@ -173,7 +183,9 @@ bool initializeInputSource(const InputConfig& config, double& fps,
         fps = 30.0; // Default to 30 fps for webcams
         cout << "Warning: Camera FPS is 0, defaulting to " << fps << endl;
     }
-    std::cout << "Using camera source. Frame width: " << frameWidth << ", Frame height: " << frameHeight << ", FPS: " << fps << std::endl;
+    std::cout << "Using camera source. Frame width: " << frameWidth 
+              << ", Frame height: " << frameHeight << ", FPS: " << fps 
+              << std::endl;
     
   } else if (config.mode == InputMode::FILE) {
     cap.open(config.path);
@@ -187,7 +199,8 @@ bool initializeInputSource(const InputConfig& config, double& fps,
     fps = static_cast<double>(cap.get(CAP_PROP_FPS));
     if (fps <= 0) { // Some video files might return 0 fps
         fps = 30.0; // Default to 30 fps
-        cout << "Warning: Video file FPS is 0 or invalid, defaulting to " << fps << endl;
+        cout << "Warning: Video file FPS is 0 or invalid, defaulting to " 
+             << fps << endl;
     }
 
     std::cout << "Using file source: " << config.path << std::endl;
@@ -197,21 +210,24 @@ bool initializeInputSource(const InputConfig& config, double& fps,
 
   } else { // config.mode == InputMode::SIMULATOR
     // Create the camera engine with floor texture
-    cameraEngine = std::make_unique<CameraEngine>(config.path, 10.0);
+    cameraEngine = std::make_shared<CameraEngine>(config.path, 10.0);
     if (!cameraEngine) {
-        cerr << "Error: Failed to create CameraEngine for simulator mode." << endl;
+        cerr << "Error: Failed to create CameraEngine for simulator mode." 
+             << endl;
         return false;
     }
     cameraEngine->setCameraParams(default_camera_params);
     fps = 30.0; // Simulated camera framerate
-    std::cout << "Using simulator source with image: " << config.path << ". FPS: " << fps << std::endl;
+    std::cout << "Using simulator source with image: " << config.path 
+              << ". FPS: " << fps << std::endl;
   }
   
   return true;
 }
 
 // Function to setup stabilizer and display windows
-Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames, int working_height) {
+Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames, 
+                                    int working_height) {
   Stabilizer stabilizer(past_frames, future_frames, working_height);
   
   // Create windows
@@ -238,37 +254,37 @@ Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames, int wor
 }
 
 // Function to handle camera movement in simulator mode
-bool handleCameraMovement(int key, CameraEngine* cameraEngine, const CameraEngine::CameraParams& default_camera_params) {
+bool handleCameraMovement(int key, std::shared_ptr<CameraEngine> cameraEngine, 
+                         const CameraEngine::CameraParams& default_camera_params) {
   if (!cameraEngine) return false;
   
   bool has_camera_moved = true;
   switch (toupper(key)) {
-    // --- Camera Movement ---
-    case 'W': // Move Forward
+    case 'W':
       cameraEngine->moveForward(1.0);
       break;
-    case 'S': // Move Backward
+    case 'S':
       cameraEngine->moveBackward(1.0);
       break;
-    case 'A': // Move Left
+    case 'A':
       cameraEngine->moveLeft(1.0);
       break;
-    case 'D': // Move Right
+    case 'D':
       cameraEngine->moveRight(1.0);
       break;
-    case 'Q': // Roll Counter-Clockwise
+    case 'Q':
       cameraEngine->rollCounterClockwise(10.0);
       break;
-    case 'E': // Roll Clockwise
+    case 'E':
       cameraEngine->rollClockwise(1.0);
       break;
-    case SPACEBAR_KEY: // Move Up
+    case SPACEBAR_KEY:
       cameraEngine->moveUp(1.0);
       break;
-    case 'C': // Move Down
+    case 'C':
       cameraEngine->moveDown(1.0);
       break;
-    case 'P': // Reset Camera Pose
+    case 'P':
       {
           cameraEngine->setCameraParams(default_camera_params);
           cout << "Camera pose reset." << endl;
@@ -284,33 +300,33 @@ bool handleCameraMovement(int key, CameraEngine* cameraEngine, const CameraEngin
 // Function to handle stabilization controls
 void handleStabilizationControls(int key, Stabilizer& stabilizer) {
   switch (toupper(key)) {
-    // --- Stabilization Controls ---
-    case 'X': // Reset stabilizer
+    case 'X':
       stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
       break;
-    case 'F': // Full lock stabilization
+    case 'F':
       stabilizer.setStabilizationMode(StabilizationMode::ACCUMULATED_FULL_LOCK);
       break;
-    case 'O': // ORB-based Full lock stabilization
+    case 'O':
       stabilizer.setStabilizationMode(StabilizationMode::ORB_FULL_LOCK);
       break;
-    case 'L': // SIFT-based Full lock stabilization
+    case 'L':
       stabilizer.setStabilizationMode(StabilizationMode::SIFT_FULL_LOCK);
       break;
-    case 'T': // Translation lock stabilization
+    case 'T':
       stabilizer.setStabilizationMode(StabilizationMode::TRANSLATION_LOCK);
       break;
-    case 'R': // Rotation lock stabilization
+    case 'R':
       stabilizer.setStabilizationMode(StabilizationMode::ROTATION_LOCK);
       break;
-    case 'G': // Global smoothing stabilization
+    case 'G':
       stabilizer.setStabilizationMode(StabilizationMode::GLOBAL_SMOOTHING);
       break;
   }
 }
 
 // Function to capture frame from input source
-bool captureFrame(const InputConfig& config, VideoCapture& cap, CameraEngine* cameraEngine, cv::Mat& frame) {
+bool captureFrame(const InputConfig& config, VideoCapture& cap,
+                 std::shared_ptr<CameraEngine> cameraEngine, cv::Mat& frame) {
   if (config.mode == InputMode::CAMERA || config.mode == InputMode::FILE) {
     cap >> frame;
     if (frame.empty()) {
@@ -332,22 +348,26 @@ bool captureFrame(const InputConfig& config, VideoCapture& cap, CameraEngine* ca
 }
 
 // Function to add text overlays to frame
-void addFrameOverlays(cv::Mat& frame, const InputConfig& config, CameraEngine* cameraEngine, double fps) {
+void addFrameOverlays(cv::Mat& frame, const InputConfig& config, 
+                     std::shared_ptr<CameraEngine> cameraEngine, double fps) {
   if (config.mode == InputMode::SIMULATOR) {
     if (!cameraEngine) {
-         cerr << "Error: CameraEngine not available for displaying params in simulator mode." << endl;
+         cerr << "Error: CameraEngine not available for displaying params "
+              << "in simulator mode." << endl;
     } else {
         // Get camera parameters to display
-        const CameraEngine::CameraParams& cameraParams = cameraEngine->getCameraParams();
+        const CameraEngine::CameraParams& cameraParams = 
+            cameraEngine->getCameraParams();
         
         // Display information on original frame
-        string posText = "Pos: (" + to_string(cameraParams.position.x).substr(0,4) + ", "
-                        + to_string(cameraParams.position.y).substr(0,4) + ", "
-                        + to_string(cameraParams.position.z).substr(0,4) + ")";
+        string posText = "Pos: (" + to_string(cameraParams.position.x).substr(0,4) 
+                        + ", " + to_string(cameraParams.position.y).substr(0,4) 
+                        + ", " + to_string(cameraParams.position.z).substr(0,4) + ")";
         // Add black background rectangle first
         Rect posRect = Rect(5, 10, 240, 25);
         rectangle(frame, posRect, Scalar(0, 0, 0), -1);
-        putText(frame, posText, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
+        putText(frame, posText, Point(10, 30), FONT_HERSHEY_SIMPLEX, 0.6, 
+                Scalar(0, 255, 0), 1);
         
         string rotText = "Pan:" + to_string(static_cast<int>(cameraParams.pan))
                        + " Tilt:" + to_string(static_cast<int>(cameraParams.tilt))
@@ -355,7 +375,8 @@ void addFrameOverlays(cv::Mat& frame, const InputConfig& config, CameraEngine* c
         // Add black background rectangle for rotation info
         Rect rotRect = Rect(5, 40, 240, 25);
         rectangle(frame, rotRect, Scalar(0, 0, 0), -1);
-        putText(frame, rotText, Point(10, 60), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
+        putText(frame, rotText, Point(10, 60), FONT_HERSHEY_SIMPLEX, 0.6, 
+                Scalar(0, 255, 0), 1);
     }
   }
   
@@ -363,12 +384,15 @@ void addFrameOverlays(cv::Mat& frame, const InputConfig& config, CameraEngine* c
   string fpsText = "FPS: " + to_string(static_cast<int>(fps));
   Rect fpsRect = Rect(5, 70, 120, 25);
   rectangle(frame, fpsRect, Scalar(0, 0, 0), -1);
-  putText(frame, fpsText, Point(10, 90), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 255, 0), 1);
+  putText(frame, fpsText, Point(10, 90), FONT_HERSHEY_SIMPLEX, 0.6, 
+          Scalar(0, 255, 0), 1);
 }
 
 // Function to process and display frames
-void processAndDisplayFrames(cv::Mat& frame, Stabilizer& stabilizer, std::deque<cv::Mat>& originalFrameBuffer, 
-                           int future_frames, const InputConfig& config, CameraEngine* cameraEngine, 
+void processAndDisplayFrames(cv::Mat frame, Stabilizer& stabilizer, 
+                           std::deque<cv::Mat>& originalFrameBuffer, 
+                           int future_frames, const InputConfig& config, 
+                           std::shared_ptr<CameraEngine> cameraEngine, 
                            std::chrono::high_resolution_clock::time_point start_time) {
   // --- Apply Stabilization ---
   cv::Mat stabilized = stabilizer.stabilizeFrame(frame);
@@ -414,17 +438,19 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
 
-  std::unique_ptr<CameraEngine> cameraEngine;
+  std::shared_ptr<CameraEngine> cameraEngine;
   VideoCapture cap;
   
-  if (!initializeInputSource(config, fps, cameraEngine, cap, default_camera_params)) {
+  if (!initializeInputSource(config, fps, cameraEngine, cap, 
+                            default_camera_params)) {
     return EXIT_FAILURE;
   }
   
   const int past_frames    = VIDEO_STABILIZER_WINDOW_SECS.first * fps;
   const int future_frames  = VIDEO_STABILIZER_WINDOW_SECS.second * fps;
   const int working_height = VIDEO_STABILIZER_WORKING_HEIGHT;
-  Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, working_height);
+  Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, 
+                                                    working_height);
   
   // Buffer to store original frames for delayed matching with stabilized frames
   // This is used to present both the original and stabilized frames in sync
@@ -445,18 +471,19 @@ int main(int argc, char* argv[]) {
 
     // Handle keyboard input for simulator mode BEFORE capturing frame
     if (config.mode == InputMode::SIMULATOR) {
-      handleCameraMovement(key, cameraEngine.get(), default_camera_params);
+      handleCameraMovement(key, cameraEngine, default_camera_params);
     }
     
     cv::Mat frame;
     
-    if (!captureFrame(config, cap, cameraEngine.get(), frame)) {
+    if (!captureFrame(config, cap, cameraEngine, frame)) {
       break;
     }
     
     handleStabilizationControls(key, stabilizer);
     
-    processAndDisplayFrames(frame, stabilizer, originalFrameBuffer, future_frames, config, cameraEngine.get(), start);
+    processAndDisplayFrames(frame, stabilizer, originalFrameBuffer, 
+                          future_frames, config, cameraEngine, start);
   }
 
   cleanup();
