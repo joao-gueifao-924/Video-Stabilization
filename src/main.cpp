@@ -9,6 +9,21 @@
 using namespace cv;
 using namespace std;
 
+static const std::pair<double, double> VIDEO_STABILIZER_WINDOW_SECS = {2.0, 1.5};
+static const int VIDEO_STABILIZER_WORKING_HEIGHT = 360;
+
+static const int ESC_KEY = 27;
+static const int SPACEBAR_KEY = 32;
+
+static const CameraEngine::CameraParams default_camera_params = {
+  Point3d(0.5, -0.3, 0.7),
+  0.0,
+  180.0,
+  180.0,
+  1000.0,
+  Size(1280, 720)
+};
+
 enum class InputMode {
   UNSPECIFIED,
   SIMULATOR,
@@ -196,17 +211,13 @@ bool initializeInputSource(const InputConfig& config, double& fps,
 }
 
 // Function to setup stabilizer and display windows
-Stabilizer setupStabilizerAndWindows(double fps) {
-  const int past_frames = 2.0 * fps;
-  const int future_frames = 1.5 * fps;
-  const int working_height = 360;
+Stabilizer setupStabilizerAndWindows(int past_frames, int future_frames, int working_height) {
   Stabilizer stabilizer(past_frames, future_frames, working_height);
   
   // Create windows
   namedWindow("Original Camera Feed", WINDOW_NORMAL);
   namedWindow("Stabilized Output", WINDOW_NORMAL);
   
-  cout << "Windows created. Using " << cv::getNumThreads() << " threads for rendering." << endl;
   cout << "\nControls:\n"
        << " W/S: Move Forward/Backward (relative to camera direction)\n"
        << " A/D: Move Left/Right (relative to camera direction)\n"
@@ -230,50 +241,44 @@ Stabilizer setupStabilizerAndWindows(double fps) {
 bool handleCameraMovement(int key, CameraEngine* cameraEngine, const CameraEngine::CameraParams& default_camera_params) {
   if (!cameraEngine) return false;
   
-  bool cameraMoved = false;
+  bool has_camera_moved = true;
   switch (toupper(key)) {
     // --- Camera Movement ---
     case 'W': // Move Forward
       cameraEngine->moveForward(1.0);
-      cameraMoved = true;
       break;
     case 'S': // Move Backward
       cameraEngine->moveBackward(1.0);
-      cameraMoved = true;
       break;
     case 'A': // Move Left
       cameraEngine->moveLeft(1.0);
-      cameraMoved = true;
       break;
     case 'D': // Move Right
       cameraEngine->moveRight(1.0);
-      cameraMoved = true;
       break;
     case 'Q': // Roll Counter-Clockwise
       cameraEngine->rollCounterClockwise(10.0);
-      cameraMoved = true;
       break;
     case 'E': // Roll Clockwise
       cameraEngine->rollClockwise(1.0);
-      cameraMoved = true;
       break;
-    case 32: // spacebar - Move Up
+    case SPACEBAR_KEY: // Move Up
       cameraEngine->moveUp(1.0);
-      cameraMoved = true;
       break;
     case 'C': // Move Down
       cameraEngine->moveDown(1.0);
-      cameraMoved = true;
       break;
     case 'P': // Reset Camera Pose
       {
           cameraEngine->setCameraParams(default_camera_params);
-          cameraMoved = true; // Indicate camera has changed
           cout << "Camera pose reset." << endl;
       }
       break;
+    default:
+      has_camera_moved = false;
+      break;
   }
-  return cameraMoved;
+  return has_camera_moved;
 }
 
 // Function to handle stabilization controls
@@ -396,7 +401,6 @@ void processAndDisplayFrames(cv::Mat& frame, Stabilizer& stabilizer, std::deque<
   }
 }
 
-// Function to cleanup resources
 void cleanup() {
   destroyAllWindows();
   cout << "Windows closed. Application finished." << endl;
@@ -406,33 +410,24 @@ int main(int argc, char* argv[]) {
   double fps = 0.0;
   InputConfig config;
 
-  CameraEngine::CameraParams default_camera_params;
-  default_camera_params.position = Point3d(0.5, -0.3, 0.7);
-  default_camera_params.pan = 0.0;
-  default_camera_params.tilt = 180.0;
-  default_camera_params.roll = 180.0;
-  default_camera_params.focalLength = 1000.0;
-  default_camera_params.sensorResolution = Size(1280, 720);
-
   if (!parseCommandLineArgs(argc, argv, config)) {
-    return -1;
+    return EXIT_FAILURE;
   }
 
-  // Initialize CameraEngine or VideoCapture based on source
   std::unique_ptr<CameraEngine> cameraEngine;
   VideoCapture cap;
   
   if (!initializeInputSource(config, fps, cameraEngine, cap, default_camera_params)) {
-    return -1;
+    return EXIT_FAILURE;
   }
   
-  // Create stabilizer and setup windows
-  Stabilizer stabilizer = setupStabilizerAndWindows(fps);
+  const int past_frames    = VIDEO_STABILIZER_WINDOW_SECS.first * fps;
+  const int future_frames  = VIDEO_STABILIZER_WINDOW_SECS.second * fps;
+  const int working_height = VIDEO_STABILIZER_WORKING_HEIGHT;
+  Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, working_height);
   
-  // Calculate frame timing for buffer management
-  const int future_frames = 1.5 * fps;
-
-  // Buffer to store original frames for delay matching
+  // Buffer to store original frames for delayed matching with stabilized frames
+  // This is used to present both the original and stabilized frames in sync
   std::deque<cv::Mat> originalFrameBuffer;
 
   // --- Main Interaction Loop ---
@@ -441,10 +436,9 @@ int main(int argc, char* argv[]) {
     // Start timer for FPS calculation
     auto start = chrono::high_resolution_clock::now();
 
-    // --- Process Keyboard Input ---
-    int key = waitKey(1); // Wait 1ms for a key press
+    int key = waitKey(1);
 
-    if (key == 27) { // ESC key
+    if (key == ESC_KEY) {
       cout << "ESC pressed, exiting." << endl;
       break;
     }
@@ -456,20 +450,15 @@ int main(int argc, char* argv[]) {
     
     cv::Mat frame;
     
-    // Capture frame from input source
     if (!captureFrame(config, cap, cameraEngine.get(), frame)) {
       break;
     }
     
-    // Handle stabilization controls
     handleStabilizationControls(key, stabilizer);
     
-    // Process and display frames
     processAndDisplayFrames(frame, stabilizer, originalFrameBuffer, future_frames, config, cameraEngine.get(), start);
   }
 
-  // Release resources
   cleanup();
-
-  return 0;
+  return EXIT_SUCCESS;
 }
