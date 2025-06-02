@@ -18,13 +18,18 @@ enum class InputMode {
 };
 
 struct InputConfig {
+  // Defaults overridden by optional command line arguments
   InputMode mode = InputMode::UNSPECIFIED;
   std::string path;  // Unified path field for video files or simulator images
-  int cameraId = 0;
+  int cameraId = 0;                // Camera ID for --camera mode
+  double pastWindowSecs = 2.0;     // Past stabilization window in seconds
+  double futureWindowSecs = 1.5;   // Future stabilization window in seconds  
+  int workingHeight = 360;         // Stabilizer working height in pixels
 };
 
 // Command line argument parsing
 bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config);
+void printUsage(const char* programName);
 
 // Input source initialization
 bool initializeInputSource(const InputConfig& config, double& fps, 

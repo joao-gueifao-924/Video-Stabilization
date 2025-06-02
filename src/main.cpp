@@ -11,9 +11,6 @@ using namespace cv;
 using namespace std;
 using namespace VideoStabilizer;
 
-static const std::pair<double, double> VIDEO_STABILIZER_WINDOW_SECS = {2.0, 1.5};
-static const int VIDEO_STABILIZER_WORKING_HEIGHT_PIXELS = 360;
-
 static const int ESC_KEY = 27;
 
 static const CameraEngine::CameraParams default_camera_params = {
@@ -41,9 +38,9 @@ int main(int argc, char* argv[]) {
     return EXIT_FAILURE;
   }
   
-  const int past_frames    = VIDEO_STABILIZER_WINDOW_SECS.first * fps;
-  const int future_frames  = VIDEO_STABILIZER_WINDOW_SECS.second * fps;
-  const int working_height = VIDEO_STABILIZER_WORKING_HEIGHT_PIXELS;
+  const int past_frames    = config.pastWindowSecs * fps;
+  const int future_frames  = config.futureWindowSecs * fps;
+  const int working_height = config.workingHeight;
   Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, 
                                                     working_height);
   

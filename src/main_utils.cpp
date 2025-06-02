@@ -6,8 +6,44 @@ using namespace std;
 
 namespace VideoStabilizer {
 
+// Minimum window size in seconds to ensure correct stabilizer runtime
+static const double MIN_STABILIZER_WINDOW_SECONDS = 0.030; // 30 milliseconds minimum
+
+// Function to print usage information
+void printUsage(const char* programName) {
+  cout << "Usage: " << programName << " <input_mode> [options]" << endl;
+  cout << endl;
+  cout << "Input modes (required, choose one):" << endl;
+  cout << "  --simulator <path>    Use simulator with floor texture image" << endl;
+  cout << "  --camera <id>         Use camera with given ID (typically 0)" << endl;
+  cout << "  --file <path>         Use video file" << endl;
+  cout << endl;
+  cout << "Optional stabilizer parameters:" << endl;
+  cout << "  --past-window <secs>     Past window size in seconds (default: 2.0)" << endl;
+  cout << "  --future-window <secs>   Future window size in seconds (default: 1.5)" << endl;
+  cout << "  --working-height <pixels> Working height in pixels (default: 360)" << endl;
+  cout << "                           Must be > 90 and <= 2160" << endl;
+  cout << endl;
+  cout << "Note: Total window size (--past-window + --future-window) must be >= " 
+       << MIN_STABILIZER_WINDOW_SECONDS << " seconds" << endl;
+  cout << endl;
+  cout << "Examples:" << endl;
+  cout << "  " << programName << " --camera 0" << endl;
+  cout << "  " << programName << " --file video.mp4 --past-window 3.0 --future-window 2.0" << endl;  
+  cout << "  " << programName << " --simulator texture.jpg --working-height 480" << endl;
+}
+
 // Function to parse command line arguments
 bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
+  // Check for help request
+  for (int i = 1; i < argc; ++i) {
+    string arg = argv[i];
+    if (arg == "--help" || arg == "-h") {
+      printUsage(argv[0]);
+      return false; // Not an error, but we don't want to continue
+    }
+  }
+
   // --- First Pass: Identify Input Mode and Count --- 
   int simulatorModeCount = 0;
   int cameraModeCount = 0;
@@ -27,8 +63,8 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
   int totalModeFlags = simulatorModeCount + cameraModeCount + fileModeCount;
 
   if (totalModeFlags == 0) {
-    cerr << "Error: No input mode specified. Use --simulator <path>, "
-         << "--camera <id>, or --file <path>." << endl;
+    cerr << "Error: No input mode specified." << endl;
+    printUsage(argv[0]);
     return false;
   }
   if (totalModeFlags > 1) {
@@ -46,7 +82,7 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
     config.mode = InputMode::FILE;
   } // No else needed due to prior checks
 
-  // --- Second Pass: Parse Values for the Determined Mode and Handle Unknowns ---
+  // --- Second Pass: Parse Values for the Determined Mode and Handle Optional Args ---
   bool valueForChosenModeFound = false;
   for (int i = 1; i < argc; ++i) {
     string arg = argv[i];
@@ -103,12 +139,82 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
              << arg << endl;
         return false;
       }
+    } else if (arg == "--past-window") {
+      if (i + 1 < argc) {
+        try {
+          config.pastWindowSecs = stod(argv[++i]);
+          if (config.pastWindowSecs < 0) {
+            cerr << "Error: --past-window must be non-negative." << endl;
+            return false;
+          }
+        } catch (const std::invalid_argument& ia) {
+          cerr << "Error: Invalid value for --past-window: " << argv[i] << endl;
+          return false;
+        } catch (const std::out_of_range& oor) {
+          cerr << "Error: Value out of range for --past-window: " << argv[i] << endl;
+          return false;
+        }
+      } else {
+        cerr << "Error: --past-window argument requires a value in seconds." << endl;
+        return false;
+      }
+    } else if (arg == "--future-window") {
+      if (i + 1 < argc) {
+        try {
+          config.futureWindowSecs = stod(argv[++i]);
+          if (config.futureWindowSecs < 0) {
+            cerr << "Error: --future-window must be non-negative." << endl;
+            return false;
+          }
+        } catch (const std::invalid_argument& ia) {
+          cerr << "Error: Invalid value for --future-window: " << argv[i] << endl;
+          return false;
+        } catch (const std::out_of_range& oor) {
+          cerr << "Error: Value out of range for --future-window: " << argv[i] << endl;
+          return false;
+        }
+      } else {
+        cerr << "Error: --future-window argument requires a value in seconds." << endl;
+        return false;
+      }
+    } else if (arg == "--working-height") {
+      if (i + 1 < argc) {
+        try {
+          config.workingHeight = stoi(argv[++i]);
+          if (config.workingHeight <= 90) {
+            cerr << "Error: --working-height must be greater than 90 pixels." << endl;
+            return false;
+          }
+          if (config.workingHeight > 2160) {
+            cerr << "Error: --working-height must be no more than 2160 pixels." << endl;
+            return false;
+          }
+        } catch (const std::invalid_argument& ia) {
+          cerr << "Error: Invalid value for --working-height: " << argv[i] << endl;
+          return false;
+        } catch (const std::out_of_range& oor) {
+          cerr << "Error: Value out of range for --working-height: " << argv[i] << endl;
+          return false;
+        }
+      } else {
+        cerr << "Error: --working-height argument requires a value in pixels." << endl;
+        return false;
+      }
     } else {
-      // This argument is not "--simulator", "--camera", or "--file".
+      // This argument is not a recognized flag.
       // It's an unknown argument.
       cerr << "Error: Unknown argument: " << arg << endl;
       return false;
     }
+  }
+
+  // Validate that both past and future windows are not both effectively zero
+  // This is to ensure that the stabilizer can run correctly.
+  const double totalWindowSize = config.pastWindowSecs + config.futureWindowSecs;
+  if (totalWindowSize < MIN_STABILIZER_WINDOW_SECONDS) {
+    cerr << "Error: Total window size must be >= " << MIN_STABILIZER_WINDOW_SECONDS << " seconds." << endl;
+    cerr << "Adjust --past-window and/or --future-window to increase the total window size." << endl;
+    return false;
   }
 
   // Validate that the required value for the chosen mode was actually found
