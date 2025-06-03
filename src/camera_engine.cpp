@@ -4,8 +4,8 @@ using namespace cv;
 using namespace std;
 
 // Constructor
-CameraEngine::CameraEngine(const std::string& floorTexturePath, double floorWidth) 
-    : m_moveSpeed(0.1), m_rollSpeed(2.0), m_floorWidth(floorWidth) {
+CameraEngine::CameraEngine(const std::string& floorTexturePath) 
+    : m_moveSpeed(0.1), m_rollSpeed(2.0) {
     // Load floor texture
     m_floorTexture = imread(floorTexturePath);
     if (m_floorTexture.empty()) {
@@ -15,17 +15,6 @@ CameraEngine::CameraEngine(const std::string& floorTexturePath, double floorWidt
     }
     cout << "Floor texture loaded successfully (" 
          << m_floorTexture.cols << "x" << m_floorTexture.rows << ")" << endl;
-
-    // Calculate floor boundaries respecting image aspect ratio
-    double aspectRatio = static_cast<double>(m_floorTexture.cols) / static_cast<double>(m_floorTexture.rows);
-    double floorHeight = m_floorWidth / aspectRatio;
-    
-    m_minFloorX = -m_floorWidth / 2.0;
-    m_maxFloorX = m_floorWidth / 2.0;
-    m_minFloorY = -floorHeight / 2.0;
-    m_maxFloorY = floorHeight / 2.0;
-    
-    cout << "Floor dimensions: " << m_floorWidth << "m x " << floorHeight << "m" << endl;
 
     // Initialize camera with defaults
     CameraParams defaultParams;
@@ -40,11 +29,6 @@ CameraEngine::~CameraEngine() {
 // Initialize camera parameters
 void CameraEngine::initCamera(const CameraParams& params) {
     m_cameraParams = params;
-}
-
-// Helper method: Convert degrees to radians
-inline double CameraEngine::degreesToRadians(double degrees) {
-    return degrees * M_PI / 180.0;
 }
 
 // Helper method: Create rotation matrix from pan, tilt, and roll angles
@@ -70,20 +54,18 @@ Mat CameraEngine::rotationMatrix(double pan, double tilt, double roll) {
         sin(rollRad), cos(rollRad), 0,
         0, 0, 1);
 
-    // Combine rotations: R = Ry(pan) * Rx(tilt) * Rz(roll)
+    // Combine rotations: R = Rz(roll) * Rx(tilt) * Ry(pan)
     // This matrix transforms points from camera coordinates to world coordinates
-    return rotationY * rotationX * rotationZ;
+    return rotationZ * rotationX * rotationY;
 }
 
 // Constructor for RenderPixelLoopBody
 CameraEngine::RenderPixelLoopBody::RenderPixelLoopBody(
     Mat& _frame, const Mat& _floorTexture,
     const Mat& _cameraRotation, const Point3d& _cameraPosition,
-    double _focalLength, double _cx, double _cy,
-    double _minFloorX, double _maxFloorX, double _minFloorY, double _maxFloorY)
+    double _focalLength, double _cx, double _cy)
     : frame(_frame), floorTexture(_floorTexture), cameraRotation(_cameraRotation),
     cameraPosition(_cameraPosition), focalLength(_focalLength), cx(_cx), cy(_cy),
-    minFloorX(_minFloorX), maxFloorX(_maxFloorX), minFloorY(_minFloorY), maxFloorY(_maxFloorY),
     textureCols(_floorTexture.cols), textureRows(_floorTexture.rows) {}
 
 // Parallel loop body implementation
@@ -180,8 +162,7 @@ Mat CameraEngine::renderFrame() {
     Point3d cameraPosition = m_cameraParams.position;
 
     RenderPixelLoopBody loopBody(frame, m_floorTexture, cameraRotation, cameraPosition,
-                                focalLength, cx, cy,
-                                m_minFloorX, m_maxFloorX, m_minFloorY, m_maxFloorY);
+                                focalLength, cx, cy);
     parallel_for_(Range(0, frame.rows), loopBody);
 
     return frame;
@@ -227,9 +208,9 @@ void CameraEngine::moveDown(double amount) {
 }
 
 void CameraEngine::rollClockwise(double amount) {
-    m_cameraParams.roll += amount * m_rollSpeed;
+    m_cameraParams.roll -= amount * m_rollSpeed; // Positive roll angle is CCW (standard for Z-axis rotation matrix), so decrease for CW
 }
 
 void CameraEngine::rollCounterClockwise(double amount) {
-    m_cameraParams.roll -= amount * m_rollSpeed;
+    m_cameraParams.roll += amount * m_rollSpeed; // Positive roll angle is CCW, so increase for CCW
 } 

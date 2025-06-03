@@ -82,7 +82,7 @@ void printUsage(const char* programName);
  *       - Defaults to 30 fps if video file returns invalid fps
  * @note For simulator mode:
  *       - Uses fixed 30 fps
- *       - Creates a floor texture with a tile width of 10.0 metres in the simulated 3D space
+ *       - Creates a infinite tiled floor texture and coloured sky the simulated 3D space
  *       - Initializes camera with provided default parameters
  *       - Refer to CameraEngine for more details on the floor texture composition
  * 

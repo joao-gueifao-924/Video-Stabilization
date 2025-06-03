@@ -282,7 +282,7 @@ bool initializeInputSource(const InputConfig& config, double& fps,
 
   } else { // config.mode == InputMode::SIMULATOR
     // Create the camera engine with floor texture
-    cameraEngine = std::make_shared<CameraEngine>(config.path, 10.0);
+    cameraEngine = std::make_shared<CameraEngine>(config.path);
     if (!cameraEngine) {
         cerr << "Error: Failed to create CameraEngine for simulator mode." 
              << endl;
@@ -344,7 +344,7 @@ bool handleCameraMovement(int key, std::shared_ptr<CameraEngine> cameraEngine,
       cameraEngine->moveRight(1.0);
       break;
     case 'Q':
-      cameraEngine->rollCounterClockwise(10.0);
+      cameraEngine->rollCounterClockwise(1.0);
       break;
     case 'E':
       cameraEngine->rollClockwise(1.0);
