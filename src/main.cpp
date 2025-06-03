@@ -14,78 +14,6 @@ using namespace VideoStabilizer;
 // ASCII code for the ESC key, used for graceful program termination.
 static const int ESC_KEY = 27;
 
-// Video Stabilizer: Program Overview
-//
-// VIDEO INPUT TYPES:
-// The program supports three distinct video input modes, specified via command line 
-// arguments:
-// 
-// 1. CAMERA MODE: Live webcam input
-//    - Captures real-time video from a connected camera/webcam
-//    - Specified by camera ID parameter in command line arguments
-//    - Demonstrates real-time video stabilization applications
-// 
-// 2. FILE MODE: Pre-recorded video file input  
-//    - Processes existing video files (MP4, AVI, MOV, etc.)
-//    - Specified by providing video file path in command line arguments
-//    - Demonstrates stabilizing recorded footage
-// 
-// 3. SIMULATOR MODE: Synthetic camera simulation
-//    - Generates artificial camera movement over a floor texture
-//    - Creates precise, controllable camera motion for testing and demonstration
-//    - Specified by simulator flag in command line arguments
-//    - Allows keyboard control of camera position and orientation during runtime
-//
-// Refer to VideoStabilizer::printUsage() for more details on how to construct the 
-// command line arguments.
-// 
-// KEYBOARD CONTROLS:
-// The program supports various keyboard inputs for runtime control:
-// 
-//    UNIVERSAL CONTROLS (All input modes):
-//       - ESC: Exit the program gracefully
-//    
-//    CAMERA MOVEMENT (Simulator mode only):
-//       - W: Move camera forward
-//       - A: Move camera left (strafe)
-//       - S: Move camera backward  
-//       - D: Move camera right (strafe)
-//       - Q: Roll counter-clockwise
-//       - E: Roll clockwise
-//       - SPACE: Move camera up
-//       - C: Move camera down
-//       - P: Reset camera pose
-//    
-//    STABILIZATION CONTROLS (All input modes):
-//       - X: Reset stabilizer (to Global Smoothing)
-//       - F: Full lock stabilization (accumulated)
-//       - O: ORB-based Full lock stabilization
-//       - L: SIFT-based Full lock stabilization
-//       - T: Translation lock stabilization mode
-//       - R: Rotation lock stabilization mode
-//       - G: Global smoothing stabilization mode
-// 
-// PROGRAM EXECUTION FLOW:
-// 1. Parse command line arguments to determine input mode and configuration options
-// 2. Initialize input source based on selected mode:
-//    - Camera: Opens webcam with specified device ID
-//    - File: Opens video file from provided path
-//    - Simulator: Creates CameraEngine with synthetic floor texture and default 
-//    camera parameters
-// 3. Setup video stabilizer with configured parameters:
-//    - Past window size (in frames) - how many previous frames to consider
-//    - Future window size (in frames) - how many future frames to look ahead
-//    - Working height for processing - resolution for stabilization calculations
-// 4. Create display windows for original and stabilized video comparison
-// 5. Main processing loop:
-//    - Capture frame from selected input source
-//    - Process frame through stabilization algorithm
-//    - Display both original and stabilized frames side-by-side
-//    - Handle keyboard input for runtime controls (camera movement in simulator mode, 
-//    stabilization controls, ESC to exit)
-//    - Continue processing until ESC key is pressed or input source ends
-// 6. Cleanup resources and exit gracefully
-
 /**
  * Default camera parameters used for simulator mode initialization.
  * 
@@ -115,17 +43,75 @@ static const CameraEngine::CameraParams default_camera_params = {
  * 
  * @return EXIT_SUCCESS (0) on successful completion, EXIT_FAILURE (1) on error
  * 
- * @note Program execution flow:
- *       1. Parse and validate command line arguments
- *       2. Initialize video input source (camera, file, or simulator)
- *       3. Configure stabilizer with frame window parameters
- *       4. Enter main processing loop:
- *          - Capture frames from input source
- *          - Process keyboard input for controls
- *          - Apply stabilization algorithms
- *          - Display original and stabilized frames
- *          - Calculate and display performance metrics
- *       5. Cleanup resources and exit
+ * @section video_input_types VIDEO INPUT TYPES
+ * The program supports three distinct video input modes, specified via command line 
+ * arguments:
+ * 
+ * 1. **CAMERA MODE**: Live webcam input
+ *    - Captures real-time video from a connected camera/webcam
+ *    - Specified by camera ID parameter in command line arguments
+ *    - Demonstrates real-time video stabilization applications
+ * 
+ * 2. **FILE MODE**: Pre-recorded video file input  
+ *    - Processes existing video files (MP4, AVI, MOV, etc.)
+ *    - Specified by providing video file path in command line arguments
+ *    - Demonstrates stabilizing recorded footage
+ * 
+ * 3. **SIMULATOR MODE**: Synthetic camera simulation
+ *    - Generates artificial camera movement over a floor texture
+ *    - Creates precise, controllable camera motion for testing and demonstration
+ *    - Specified by simulator flag in command line arguments
+ *    - Allows keyboard control of camera position and orientation during runtime
+ *
+ * Refer to @ref VideoStabilizer::printUsage() for more details on how to construct the 
+ * command line arguments.
+ * 
+ * @section keyboard_controls KEYBOARD CONTROLS
+ * The program supports various keyboard inputs for runtime control:
+ * 
+ *    **UNIVERSAL CONTROLS** (All input modes):
+ *       - ESC: Exit the program gracefully
+ *    
+ *    **CAMERA MOVEMENT** (Simulator mode only):
+ *       - W: Move camera forward
+ *       - A: Move camera left (strafe)
+ *       - S: Move camera backward  
+ *       - D: Move camera right (strafe)
+ *       - Q: Roll counter-clockwise
+ *       - E: Roll clockwise
+ *       - SPACE: Move camera up
+ *       - C: Move camera down
+ *       - P: Reset camera pose
+ *    
+ *    **STABILIZATION CONTROLS** (All input modes):
+ *       - X: Reset stabilizer (to Global Smoothing)
+ *       - F: Full lock stabilization (accumulated)
+ *       - O: ORB-based Full lock stabilization
+ *       - L: SIFT-based Full lock stabilization
+ *       - T: Translation lock stabilization mode
+ *       - R: Rotation lock stabilization mode
+ *       - G: Global smoothing stabilization mode
+ * 
+ * @section program_execution_flow PROGRAM EXECUTION FLOW
+ * 1. Parse command line arguments to determine input mode and configuration options
+ * 2. Initialize input source based on selected mode:
+ *    - Camera: Opens webcam with specified device ID
+ *    - File: Opens video file from provided path
+ *    - Simulator: Creates CameraEngine with synthetic floor texture and default 
+ *      camera parameters
+ * 3. Setup video stabilizer with configured parameters:
+ *    - Past window size (in frames) - how many previous frames to consider
+ *    - Future window size (in frames) - how many future frames to look ahead
+ *    - Working height for processing - resolution for stabilization calculations
+ * 4. Create display windows for original and stabilized video comparison
+ * 5. Main processing loop:
+ *    - Capture frame from selected input source
+ *    - Process frame through stabilization algorithm
+ *    - Display both original and stabilized frames side-by-side
+ *    - Handle keyboard input for runtime controls (camera movement in simulator mode, 
+ *      stabilization controls, ESC to exit)
+ *    - Continue processing until ESC key is pressed or input source ends
+ * 6. Cleanup resources and exit gracefully
  * 
  * @note The program creates two OpenCV windows:
  *       - "Original": Shows unstabilized input frames
@@ -135,12 +121,12 @@ static const CameraEngine::CameraParams default_camera_params = {
  *       of original and stabilized frames, accounting for the stabilizer's
  *       future frame window delay.
  * 
- * @throws multiple exceptions. Since this is a demonstration program, we choose to not 
- *         handle several exceptions and let the program crash to better highlight any issues.
+ * @throws multiple exceptions. As this is a demonstration program, we deliberately 
+ *         allow exceptions to propagate and crash the program to highlight issues.
  * 
- * @see parseCommandLineArgs() for command line argument details
- * @see initializeInputSource() for input source initialization
- * @see setupStabilizerAndWindows() for stabilizer configuration
+ * @see VideoStabilizer::parseCommandLineArgs() for command line argument details
+ * @see VideoStabilizer::initializeInputSource() for input source initialization
+ * @see VideoStabilizer::setupStabilizerAndWindows() for stabilizer configuration
  */
 int main(int argc, char* argv[]) {
   double fps = 0.0;  // Frames per second of the input source
