@@ -43,6 +43,41 @@ static const CameraEngine::CameraParams default_camera_params = {
  * 
  * @return EXIT_SUCCESS (0) on successful completion, EXIT_FAILURE (1) on error
  * 
+ * @section video_stabilization VIDEO STABILIZATION
+ * Video stabilization is a technique that reduces unwanted camera motion in video footage,
+ * making the output smoother. This program specifically focuses on real-time video
+ * stabilization, meaning it can process and stabilize video as it's being captured,
+ * rather than requiring post-processing.
+ * 
+ * The program offers several stabilization modes:
+ * 
+ * 1. **Global Smoothing Mode**: Applies smoothing to reduce overall camera shake while
+ *    maintaining natural motion.
+ * 
+ * 2. **Lock Modes**:
+ *    - **Full Lock**: Completely cancels out camera motion, keeping the scene perfectly still
+ *    - **Translation Lock**: Only stabilizes translational movement (side-to-side, up-down)
+ *    - **Rotation Lock**: Only stabilizes rotational movement (camera roll)
+ * 
+ * The program supports three input modes:
+ * - Live webcam input for real-time stabilization
+ * - Pre-recorded video file processing
+ * - A simulator mode that generates synthetic camera movement for testing
+ * 
+ * This implementation offers multiple frame registration methods for the motion locking
+ * modes listed above:
+ * - Accumulated Motion with Sparse Optical Flow
+ * - ORB-based Frame Registration
+ * - SIFT-based Frame Registration
+ * 
+ * This allows users to compare different stabilization approaches and choose the one that
+ * works best for their specific use case. The program can be controlled in real-time using
+ * keyboard shortcuts to switch between different stabilization modes and adjust parameters.
+ * 
+ * The real-time nature of this implementation makes it particularly useful for applications
+ * like live streaming, video conferencing, or any scenario where immediate stabilization
+ * is required rather than post-processing.
+ * 
  * @section video_input_types VIDEO INPUT TYPES
  * The program supports three distinct video input modes, specified via command line 
  * arguments:
@@ -62,6 +97,23 @@ static const CameraEngine::CameraParams default_camera_params = {
  *    - Creates precise, controllable camera motion for testing and demonstration
  *    - Specified by simulator flag in command line arguments
  *    - Allows keyboard control of camera position and orientation during runtime
+ *
+ * @section motion_tracking_comparison MOTION TRACKING COMPARISON
+ * The program provides a unique capability to compare different frame registration methods in the 
+ * context of real-time camera motion cancellation (vision locking).
+ * 
+ * - **Accumulated Motion with Sparse Optical Flow**: Computes sparse optical flow between 
+ *   consecutive frames, then fits an invertible 3x3 rigid body transformation matrix to this flow, 
+ *   and finally aggregates these transformations through chained matrix multiplication.
+ * - **ORB-based Frame Registration**: Uses Oriented FAST and Rotated BRIEF (ORB) feature detection 
+ *   and matching for efficient feature-based frame registration. A rigid body transformation matrix is 
+ *   fitted to the feature matches.
+ * - **SIFT-based Frame Registration**: Employs Scale-Invariant Feature Transform (SIFT) for robust
+ *   feature-based frame registration. A rigid body transformation matrix is fitted to the feature matches.
+ * 
+ * This comparison functionality allows users to evaluate the performance and
+ * characteristics of each frame registration method under different conditions and motion
+ * patterns.
  *
  * Refer to @ref VideoStabilizer::printUsage() for more details on how to construct the 
  * command line arguments.
