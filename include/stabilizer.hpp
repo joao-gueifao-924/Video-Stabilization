@@ -20,6 +20,7 @@
  *                  transformation matrix fitting.
  * - SIFT_FULL_LOCK: Same as ORB_FULL_LOCK but uses SIFT features for more robust
  *                   matching at the cost of higher computation time.
+ * @todo fix partial locking modes as they are not correctly implemented yet.
  * - TRANSLATION_LOCK: Compensates only for horizontal and vertical camera movement.
  * - ROTATION_LOCK: Compensates only for camera rotation around the image centre.
  * - GLOBAL_SMOOTHING: Reduces camera shake by averaging the motion between the
