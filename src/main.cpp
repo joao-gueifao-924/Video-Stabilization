@@ -99,17 +99,19 @@ static const CameraEngine::CameraParams default_camera_params = {
  *    - Allows keyboard control of camera position and orientation during runtime
  *
  * @section motion_tracking_comparison MOTION TRACKING COMPARISON
- * The program provides a unique capability to compare different frame registration methods in the 
- * context of real-time camera motion cancellation (vision locking).
+ * The program provides a unique capability to compare different frame registration 
+ * methods in the context of real-time camera motion cancellation (vision locking).
  * 
  * - **Accumulated Motion with Sparse Optical Flow**: Computes sparse optical flow between 
- *   consecutive frames, then fits an invertible 3x3 rigid body transformation matrix to this flow, 
- *   and finally aggregates these transformations through chained matrix multiplication.
- * - **ORB-based Frame Registration**: Uses Oriented FAST and Rotated BRIEF (ORB) feature detection 
- *   and matching for efficient feature-based frame registration. A rigid body transformation matrix is 
+ *   consecutive frames, then fits an invertible 3x3 rigid body transformation matrix to 
+ *   this flow, and finally aggregates these transformations through chained matrix 
+ *   multiplication.
+ * - **ORB-based Frame Registration**: Uses Oriented FAST and Rotated BRIEF (ORB) feature 
+ *   detection and matching for efficient feature-based frame registration. A rigid body 
+ *   transformation matrix is fitted to the feature matches.
+ * - **SIFT-based Frame Registration**: Employs Scale-Invariant Feature Transform (SIFT)
+ *   for robust feature-based frame registration. A rigid body transformation matrix is 
  *   fitted to the feature matches.
- * - **SIFT-based Frame Registration**: Employs Scale-Invariant Feature Transform (SIFT) for robust
- *   feature-based frame registration. A rigid body transformation matrix is fitted to the feature matches.
  * 
  * This comparison functionality allows users to evaluate the performance and
  * characteristics of each frame registration method under different conditions and motion
@@ -200,9 +202,9 @@ int main(int argc, char* argv[]) {
   }
   
   // Calculate stabilizer window parameters based on FPS and configuration
-  const int past_frames    = config.pastWindowSecs * fps;    // Historical frames for smoothing
-  const int future_frames  = config.futureWindowSecs * fps;  // Lookahead frames for smoothing
-  const int working_height = config.workingHeight;           // Processing resolution height
+  const int past_frames    = config.pastWindowSecs * fps;   // Historical frames for smoothing
+  const int future_frames  = config.futureWindowSecs * fps; // Lookahead frames for smoothing
+  const int working_height = config.workingHeight;          // Processing resolution height
   
   // Initialize stabilizer with calculated parameters and create display windows
   Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, 
