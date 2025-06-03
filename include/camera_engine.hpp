@@ -65,8 +65,10 @@ public:
          * @param focalLength Focal length in pixels.
          * @param sensorResolution Sensor resolution in pixels (width, height).
          */
-        CameraParams(cv::Point3d position, double pan, double tilt, double roll, double focalLength, cv::Size sensorResolution)
-            : position(position), pan(pan), tilt(tilt), roll(roll), focalLength(focalLength), sensorResolution(sensorResolution) {}
+        CameraParams(cv::Point3d position, double pan, double tilt, double roll,
+                    double focalLength, cv::Size sensorResolution)
+            : position(position), pan(pan), tilt(tilt), roll(roll),
+              focalLength(focalLength), sensorResolution(sensorResolution) {}
     };
 
     // Constructor

@@ -9,7 +9,8 @@ CameraEngine::CameraEngine(const std::string& floorTexturePath)
     // Load floor texture
     m_floorTexture = imread(floorTexturePath);
     if (m_floorTexture.empty()) {
-        cerr << "Error: Could not load floor texture image from '" << floorTexturePath << "'." << endl;
+        cerr << "Error: Could not load floor texture image from '" 
+             << floorTexturePath << "'." << endl;
         cerr << "Please ensure the image file exists and is accessible." << endl;
         throw runtime_error("Failed to load floor texture");
     }
@@ -65,8 +66,8 @@ CameraEngine::RenderPixelLoopBody::RenderPixelLoopBody(
     const Mat& _cameraRotation, const Point3d& _cameraPosition,
     double _focalLength, double _cx, double _cy)
     : frame(_frame), floorTexture(_floorTexture), cameraRotation(_cameraRotation),
-    cameraPosition(_cameraPosition), focalLength(_focalLength), cx(_cx), cy(_cy),
-    textureCols(_floorTexture.cols), textureRows(_floorTexture.rows) {}
+      cameraPosition(_cameraPosition), focalLength(_focalLength), cx(_cx), cy(_cy),
+      textureCols(_floorTexture.cols), textureRows(_floorTexture.rows) {}
 
 // Parallel loop body implementation
 void CameraEngine::RenderPixelLoopBody::operator()(const Range& range) const {
@@ -79,7 +80,8 @@ void CameraEngine::RenderPixelLoopBody::operator()(const Range& range) const {
     const Vec3b skyColor(230, 216, 173); // BGR for light blue
 
     // Calculate texture aspect ratio
-    double textureAspectRatio = static_cast<double>(textureCols) / static_cast<double>(textureRows);
+    double textureAspectRatio = static_cast<double>(textureCols) 
+                                    / static_cast<double>(textureRows);
     
     // Calculate tile size in world units
     // Each tile in the world is 1.0 units wide and (1.0/aspectRatio) units high
@@ -158,7 +160,8 @@ Mat CameraEngine::renderFrame() {
     double focalLength = m_cameraParams.focalLength;
     double cx = m_cameraParams.sensorResolution.width / 2.0;
     double cy = m_cameraParams.sensorResolution.height / 2.0;
-    Mat cameraRotation = rotationMatrix(m_cameraParams.pan, m_cameraParams.tilt, m_cameraParams.roll);
+    Mat cameraRotation = rotationMatrix(m_cameraParams.pan, m_cameraParams.tilt, 
+                                      m_cameraParams.roll);
     Point3d cameraPosition = m_cameraParams.position;
 
     RenderPixelLoopBody loopBody(frame, m_floorTexture, cameraRotation, cameraPosition,
