@@ -11,9 +11,8 @@ using namespace cv;
 using namespace std;
 using namespace VideoStabilizer;
 
+// ASCII code for the ESC key, used for graceful program termination.
 static const int ESC_KEY = 27;
-
-
 
 // Video Stabilizer: Program Overview
 //
@@ -87,7 +86,18 @@ static const int ESC_KEY = 27;
 //    - Continue processing until ESC key is pressed or input source ends
 // 6. Cleanup resources and exit gracefully
 
-
+/**
+ * Default camera parameters used for simulator mode initialization.
+ * 
+ * @note These parameters define the initial camera state in the 3D simulated environment:
+ *       - position: 3D coordinates in world space
+ *       - pan, tilt, roll: Camera rotation angles in degrees
+ *       - focalLength: Camera focal length in pixels (controls field of view)
+ *       - resolution: Output frame dimensions
+ * 
+ * @see CameraEngine::CameraParams for detailed parameter descriptions
+ * @see handleCameraMovement() for runtime camera control in simulator mode
+ */
 static const CameraEngine::CameraParams default_camera_params = {
   Point3d(0.5, -0.3, 0.7),
   0.0,
@@ -97,62 +107,114 @@ static const CameraEngine::CameraParams default_camera_params = {
   Size(1280, 720)
 };
 
+/**
+ * Main entry point for the Video Stabilization application.
+ * 
+ * @param argc Number of command line arguments passed to the program
+ * @param argv Array of command line argument strings
+ * 
+ * @return EXIT_SUCCESS (0) on successful completion, EXIT_FAILURE (1) on error
+ * 
+ * @note Program execution flow:
+ *       1. Parse and validate command line arguments
+ *       2. Initialize video input source (camera, file, or simulator)
+ *       3. Configure stabilizer with frame window parameters
+ *       4. Enter main processing loop:
+ *          - Capture frames from input source
+ *          - Process keyboard input for controls
+ *          - Apply stabilization algorithms
+ *          - Display original and stabilized frames
+ *          - Calculate and display performance metrics
+ *       5. Cleanup resources and exit
+ * 
+ * @note The program creates two OpenCV windows:
+ *       - "Original": Shows unstabilized input frames
+ *       - "Stabilized": Shows processed stabilized frames
+ * 
+ * @note Frame processing includes a buffer system to synchronize display
+ *       of original and stabilized frames, accounting for the stabilizer's
+ *       future frame window delay.
+ * 
+ * @throws multiple exceptions. Since this is a demonstration program, we choose to not 
+ *         handle several exceptions and let the program crash to better highlight any issues.
+ * 
+ * @see parseCommandLineArgs() for command line argument details
+ * @see initializeInputSource() for input source initialization
+ * @see setupStabilizerAndWindows() for stabilizer configuration
+ */
 int main(int argc, char* argv[]) {
-  double fps = 0.0;
-  InputConfig config;
+  double fps = 0.0;  // Frames per second of the input source
+  InputConfig config;  // Configuration parsed from command line arguments
 
+  // Parse command line arguments and validate configuration
   if (!parseCommandLineArgs(argc, argv, config)) {
     return EXIT_FAILURE;
   }
 
-  std::shared_ptr<CameraEngine> cameraEngine;
-  VideoCapture cap;
+  // Initialize input source objects based on selected mode
+  std::shared_ptr<CameraEngine> cameraEngine;  // For simulator mode
+  VideoCapture cap;  // For camera and file modes
   
+  // Setup the appropriate input source (camera, file, or simulator)
   if (!initializeInputSource(config, fps, cameraEngine, cap, 
                             default_camera_params)) {
     return EXIT_FAILURE;
   }
   
-  const int past_frames    = config.pastWindowSecs * fps;
-  const int future_frames  = config.futureWindowSecs * fps;
-  const int working_height = config.workingHeight;
+  // Calculate stabilizer window parameters based on FPS and configuration
+  const int past_frames    = config.pastWindowSecs * fps;    // Historical frames for smoothing
+  const int future_frames  = config.futureWindowSecs * fps;  // Lookahead frames for smoothing
+  const int working_height = config.workingHeight;           // Processing resolution height
+  
+  // Initialize stabilizer with calculated parameters and create display windows
   Stabilizer stabilizer = setupStabilizerAndWindows(past_frames, future_frames, 
                                                     working_height);
   
-  // Buffer to store original frames for delayed matching with stabilized frames
-  // This is used to present both the original and stabilized frames in sync
+  // Buffer to store original frames for delayed matching with stabilized frames.
+  // Ensures original and stabilized frames are displayed in temporal alignment,
+  // accounting for the stabilizer's processing delay from future frame window.
+  // Buffer size auto-adjusts based on stabilizer's future window size.
   std::deque<cv::Mat> originalFrameBuffer;
 
   // --- Main Interaction Loop ---
-  bool should_quit = false;
-  while (!should_quit) {
-    // Start timer for FPS calculation
+  // Process frames continuously until user requests exit or input source ends
+  while (true) {
+    // Start high-resolution timer for accurate FPS calculation
     auto start = chrono::high_resolution_clock::now();
 
+    // Check for keyboard input (non-blocking, 1ms timeout)
     int key = waitKey(1);
 
+    // Handle ESC key for graceful program termination
     if (key == ESC_KEY) {
       cout << "ESC pressed, exiting." << endl;
       break;
     }
 
-    // Handle keyboard input for simulator mode BEFORE capturing frame
+    // Process camera movement controls for simulator mode.
+    // Note: This is handled BEFORE frame capture to ensure movement is applied
+    // to the current frame being rendered.
     if (config.mode == InputMode::SIMULATOR) {
       handleCameraMovement(key, cameraEngine, default_camera_params);
     }
     
-    cv::Mat frame;
+    cv::Mat frame;  // Current frame from input source
     
+    // Capture next frame from the configured input source
     if (!captureFrame(config, cap, cameraEngine, frame)) {
+      // End of input reached or capture failed - exit loop
       break;
     }
     
+    // Process stabilization control keyboard inputs
     handleStabilizationControls(key, stabilizer);
     
+    // Process frame through stabilizer, manage display buffers, and update UI
     processAndDisplayFrames(frame, stabilizer, originalFrameBuffer, 
                           future_frames, config, cameraEngine, start);
   }
 
+  // Perform cleanup operations and release all resources
   cleanup();
   return EXIT_SUCCESS;
 }
