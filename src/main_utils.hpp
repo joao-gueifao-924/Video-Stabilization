@@ -67,7 +67,8 @@ void printUsage(const char* programName);
  * @param config Configuration specifying input mode and related parameters
  * @param fps Output parameter that will store the frames per second of the video source
  * @param cameraEngine Shared pointer to CameraEngine, initialised only in simulator mode
- * @param cap OpenCV VideoCapture object for camera/file input modes (uninitialized if in simulator mode)
+ * @param cap OpenCV VideoCapture object for camera/file input modes (uninitialized if
+ *            in simulator mode)
  * @param default_camera_params Default camera parameters used to initialise simulator
  * 
  * @return true if initialization succeeds, false if any errors occur:
@@ -82,13 +83,15 @@ void printUsage(const char* programName);
  *       - Defaults to 30 fps if video file returns invalid fps
  * @note For simulator mode:
  *       - Uses fixed 30 fps
- *       - Creates a infinite tiled floor texture and coloured sky the simulated 3D space
+ *       - Creates a infinite tiled floor texture and coloured sky the simulated 3D
+ *         space
  *       - Initializes camera with provided default parameters
  *       - Refer to CameraEngine for more details on the floor texture composition
  * 
  * @throws std::runtime_error If CameraEngine initialization fails in simulator mode
- *                           or if floor texture image cannot be loaded
- * @throws cv::Exception If OpenCV encounters an internal error during VideoCapture operations
+ *                            or if floor texture image cannot be loaded
+ * @throws cv::Exception If OpenCV encounters an internal error during VideoCapture
+ *                       operations
  */
 bool initializeInputSource(const InputConfig& config, double& fps, 
                           std::shared_ptr<CameraEngine>& cameraEngine, 
@@ -98,14 +101,17 @@ bool initializeInputSource(const InputConfig& config, double& fps,
 /**
  * Sets up the video stabilizer with specified parameters and creates display windows.
  * 
- * @param past_frames Number of frames before the current frame to analyze for stabilization.
- *                   Higher values provide more historical context for smoother motion.
- * @param future_frames Number of frames after the current frame to analyze for stabilization.
- *                     Higher values improve smoothing and reduce lag by providing more future context
- *                     for motion prediction. However, this increases video presentation delay.
- *                     Total frames (past + future) determines the stabilization window size.
- * @param working_height Height in pixels for internal stabilizer processing. Higher values may improve 
- *                      stabilization accuracy but increase computation time.
+ * @param past_frames Number of frames before the current frame to analyze for
+ *                   stabilization. Higher values provide more historical context
+ *                   for smoother motion.
+ * @param future_frames Number of frames after the current frame to analyze for
+ *                     stabilization. Higher values improve smoothing and reduce
+ *                     lag by providing more future context for motion prediction.
+ *                     However, this increases video presentation delay. Total frames
+ *                     (past + future) determines the stabilization window size.
+ * @param working_height Height in pixels for internal stabilizer processing. Higher
+ *                       values may improve stabilization accuracy but increase
+ *                       computation time.
  * 
  * @return Configured Stabilizer object ready for frame processing
  * 
@@ -166,7 +172,8 @@ void handleStabilizationControls(int key, Stabilizer& stabilizer);
  * 
  * @param config Configuration specifying the input mode and parameters
  * @param cap OpenCV VideoCapture object for camera/file input (unused in simulator mode)
- * @param cameraEngine Shared pointer to CameraEngine for simulator input (unused in other modes)
+ * @param cameraEngine Shared pointer to CameraEngine for simulator input
+ *                     (unused in other modes)
  * @param frame Output parameter that will store the captured frame
  * 
  * @return true if frame capture succeeds, false if capture fails or end of input reached
@@ -200,7 +207,8 @@ void addFrameOverlays(cv::Mat& frame, const InputConfig& config,
  * 
  * @param frame Input frame to be processed and displayed
  * @param stabilizer Reference to the Stabilizer object that performs stabilization
- * @param originalFrameBuffer Buffer storing original, non-stabilised frames for synchronized display
+ * @param originalFrameBuffer Buffer storing original, non-stabilised frames for
+ *                            synchronized display
  * @param future_frames Number of future frames in stabilizer window
  * @param config Input configuration parameters
  * @param cameraEngine Simulator camera engine (nullptr if not in simulator mode)
