@@ -12,7 +12,6 @@ add_executable(video_stabilization
     src/main.cpp
     src/main_utils.cpp
     src/stabilizer.cpp
-    src/tracker.cpp
     src/camera_engine.cpp
 )
 
