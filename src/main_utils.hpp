@@ -91,7 +91,7 @@ void printUsage(const char* programName);
  * @throws cv::Exception If OpenCV encounters an internal error during VideoCapture operations
  */
 bool initializeInputSource(const InputConfig& config, double& fps, 
-                          std::shared_ptr<CameraEngine> cameraEngine, 
+                          std::shared_ptr<CameraEngine>& cameraEngine, 
                           cv::VideoCapture& cap, 
                           const CameraEngine::CameraParams& default_camera_params);
 

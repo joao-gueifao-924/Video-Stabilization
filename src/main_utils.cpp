@@ -236,7 +236,7 @@ bool parseCommandLineArgs(int argc, char* argv[], InputConfig& config) {
 }
 
 bool initializeInputSource(const InputConfig& config, double& fps, 
-                          std::shared_ptr<CameraEngine> cameraEngine, 
+                          std::shared_ptr<CameraEngine>& cameraEngine, 
                           VideoCapture& cap, 
                           const CameraEngine::CameraParams& default_camera_params) {
   
