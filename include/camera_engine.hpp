@@ -46,6 +46,8 @@ public:
         double pan = 0.0;    ///< Pan angle in degrees (yaw, rotation around the Y-axis).
         double tilt = 105.0;   ///< Tilt angle in degrees (pitch, rotation around the X-axis).
         double roll = 180.0;   ///< Roll angle in degrees (rotation around the Z-axis, the optical centre). Positive angle results in counter-clockwise rotation.
+        /// \todo Review the rotation system and axes conventions. The current implementation
+        /// is not making a correct use of the camera axes and angles.
         double focalLength = 1000.0; ///< Focal length of the camera in pixels.
         cv::Size sensorResolution = cv::Size(1280, 720); ///< Resolution of the camera sensor (width, height) in pixels. Default is HD (1280x720).
 
