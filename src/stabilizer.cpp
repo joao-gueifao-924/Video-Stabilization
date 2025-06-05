@@ -11,8 +11,26 @@
 #include <iostream> // For potential debug/error messages
 #include <chrono>   // Include chrono for timing
 
-
+/**
+ * @brief Minimum number of tracked feature points required for reliable motion estimation.
+ * 
+ * If fewer points than this threshold are successfully tracked between frames,
+ * motion estimation will return an identity transform to avoid unstable results.
+ */
 const int MIN_POINTS_FOR_MOTION_ESTIMATION = 10;
+
+/**
+ * @brief Flag to control whether to use Enhanced Correlation Coefficient (ECC) refinement
+ * 
+ * When true, applies an additional ECC-based refinement step after initial motion 
+ * estimation to potentially improve accuracy. Currently disabled as the benefit vs
+ * computational cost tradeoff needs to be evaluated. Potentially suitable for slower, 
+ * offline stabilization for improved results.
+ * 
+ * @todo Evaluate whether ECC refinement meaningfully improves stabilization quality
+ * and if the additional computational cost is justified. Consider making this 
+ * configurable rather than a compile-time constant.
+ */
 const bool REFINE_WITH_ECC = false;
 
 Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight)
@@ -22,9 +40,11 @@ Stabilizer::Stabilizer(size_t pastFrames, size_t futureFrames, int workingHeight
     if (pastFrames == 0 && futureFrames == 0) 
         throw std::invalid_argument("Stabilizer: pastFrames and futureFrames cannot both be 0");
 
-    const double min_working_height = 90.0; // This is the minimum working height for the stabilizer to work properly
+    // This is the minimum working height for the stabilizer to work properly
+    const double min_working_height = 90.0;
     if (workingHeight <= min_working_height)
-        throw std::invalid_argument("Stabilizer: workingHeight must be greater than " + std::to_string(min_working_height));
+        throw std::invalid_argument("Stabilizer: workingHeight must be greater than " + 
+                                  std::to_string(min_working_height));
     if (workingHeight > 2160) // just some sobe big arbitrary number but still sensible
         throw std::invalid_argument("Stabilizer: workingHeight must be no more than 2160");
 
@@ -77,12 +97,16 @@ void Stabilizer::setStabilizationMode(StabilizationMode mode) {
 
 void Stabilizer::initializeFrame(const cv::Mat& frame) {
     if (frame.rows <= 10 || frame.cols <= 10) {
-        throw std::invalid_argument("Stabilizer: Frame has invalid size. Rows: " + std::to_string(frame.rows) + ", Cols: " + std::to_string(frame.cols));
+        throw std::invalid_argument("Stabilizer: Frame has invalid size. Rows: " + 
+                                  std::to_string(frame.rows) + ", Cols: " + 
+                                  std::to_string(frame.cols));
     }
 
     // Store original size if first frame. Error out if size has changed.
-    const bool frame_size_is_already_set = original_frame_size_.width > 0 && original_frame_size_.height > 0;
-    const bool frame_size_has_changed = original_frame_size_.width != frame.cols || original_frame_size_.height != frame.rows;
+    const bool frame_size_is_already_set = original_frame_size_.width > 0 && 
+                                          original_frame_size_.height > 0;
+    const bool frame_size_has_changed = original_frame_size_.width != frame.cols || 
+                                       original_frame_size_.height != frame.rows;
     
     if (frame_size_has_changed) {
         if (frame_size_is_already_set) { 
@@ -91,7 +115,8 @@ void Stabilizer::initializeFrame(const cv::Mat& frame) {
         original_frame_size_ = frame.size();
         // Calculate working size maintaining aspect ratio
         scaleFactor_ = static_cast<double>(workingHeight_) / frame.rows;
-        workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), workingHeight_);
+        workingSize_ = cv::Size(static_cast<int>(frame.cols * scaleFactor_), 
+                               workingHeight_);
     }
     
     // Initialize or resize trail background
@@ -107,13 +132,16 @@ cv::Mat Stabilizer::prepareTrailBackground() {
     // Convert back to BGR for compatibility
     //cv::cvtColor(next_trail_background, next_trail_background, cv::COLOR_GRAY2BGR);
 
-    const double image_ratio = static_cast<double>(trail_background_.cols) / static_cast<double>(trail_background_.rows);
+    const double image_ratio = static_cast<double>(trail_background_.cols) / 
+                              static_cast<double>(trail_background_.rows);
     const int downscaled_rows = 100;
     const int downscaled_cols = static_cast<int>(downscaled_rows * image_ratio);
 
-    // cv::resize(trail_background_, next_trail_background, cv::Size(downscaled_cols, downscaled_rows), 0, 0, cv::INTER_NEAREST);
+    // cv::resize(trail_background_, next_trail_background, 
+    //           cv::Size(downscaled_cols, downscaled_rows), 0, 0, cv::INTER_NEAREST);
     // cv::GaussianBlur(next_trail_background, next_trail_background, cv::Size(5, 5), 0);
-    // cv::resize(next_trail_background, next_trail_background, trail_background_.size(), 0, 0, cv::INTER_LINEAR);
+    // cv::resize(next_trail_background, next_trail_background, 
+    //           trail_background_.size(), 0, 0, cv::INTER_LINEAR);
     // cv::GaussianBlur(next_trail_background, next_trail_background, cv::Size(7, 7), 0);
 
     // Darken
@@ -139,10 +167,11 @@ void Stabilizer::addFrameToWindow(const cv::Mat& frame) {
     }
 }
 
-void Stabilizer::trackFeatures(const cv::Mat& previous_gray, const cv::Mat& current_gray, 
-                                const std::vector<cv::Point2f> & previousPoints,
-                                std::vector<cv::Point2f> & filtered_previousPoints,
-                                std::vector<cv::Point2f> & filtered_currentPoints) {
+void Stabilizer::trackFeatures(const cv::Mat& previous_gray, 
+                              const cv::Mat& current_gray, 
+                              const std::vector<cv::Point2f> & previousPoints,
+                              std::vector<cv::Point2f> & filtered_previousPoints,
+                              std::vector<cv::Point2f> & filtered_currentPoints) {
     filtered_previousPoints.clear();
     filtered_currentPoints.clear();
 
@@ -155,12 +184,15 @@ void Stabilizer::trackFeatures(const cv::Mat& previous_gray, const cv::Mat& curr
     auto start_lk = now();
     const cv::Size WINDOW_SIZE = cv::Size(21, 21);
     const int MAX_PYRAMID_LEVEL = 3;
-    const cv::TermCriteria TERM_CRITERIA(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 50, 0.01);
+    const cv::TermCriteria TERM_CRITERIA(cv::TermCriteria::COUNT + 
+                                        cv::TermCriteria::EPS, 50, 0.01);
     const int FLAGS = 0;
     const double MIN_EIGENVAL = 1e-4;
 
-    cv::calcOpticalFlowPyrLK(previous_gray, current_gray, previousPoints, currPoints, status, err,
-                            WINDOW_SIZE, MAX_PYRAMID_LEVEL, TERM_CRITERIA, FLAGS, MIN_EIGENVAL);
+    cv::calcOpticalFlowPyrLK(previous_gray, current_gray, previousPoints, 
+                             currPoints, status, err, WINDOW_SIZE, 
+                             MAX_PYRAMID_LEVEL, TERM_CRITERIA, 
+                             FLAGS, MIN_EIGENVAL);
     auto end_lk = now();
     auto duration_ms_lk = toMilliseconds(start_lk, end_lk);
     lk_call_count_++;
@@ -176,28 +208,38 @@ void Stabilizer::trackFeatures(const cv::Mat& previous_gray, const cv::Mat& curr
     }
 }
 
-cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& previousPoints, const std::vector<cv::Point2f>& currentPoints) {
+cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& previousPoints, 
+                                  const std::vector<cv::Point2f>& currentPoints) {
     cv::Mat H_prev2curr = cv::Mat::eye(3, 3, CV_64F);
 
-    if (currentPoints.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) return H_prev2curr; // identity matrix response
+    if (currentPoints.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) 
+        return H_prev2curr; // identity matrix response
     
     auto start_motion_estimation = now();
 
-    #if 1 // partial 2D Euclidean motion estimation (isotropic scaling, in-image-plane rotation, in-image-plane translation)
-        cv::Mat M = cv::estimateAffinePartial2D(previousPoints, currentPoints, cv::noArray(), cv::RANSAC);
-    #else // full Homography estimation (isotropic scaling, in-image-plane rotation, in-image-plane translation, anisotropic scaling, shear, line at infinity shift)
-        cv::Mat M = cv::findHomography(previousPoints, currentPoints, cv::RANSAC);
+    #if 1 
+    // partial 2D Euclidean motion estimation (isotropic scaling, in-image-plane 
+    // rotation, in-image-plane translation) 
+    // -- unfortunate OpenCV function name - it should be cv::estimateSimilar2D or cv::estimateEuclidean2D
+    cv::Mat M = cv::estimateAffinePartial2D(previousPoints, currentPoints, 
+                                           cv::noArray(), cv::RANSAC);
+    #else 
+    // full Homography estimation (isotropic scaling, in-image-plane rotation, 
+    // in-image-plane translation, anisotropic scaling, shear, line at infinity shift)
+    cv::Mat M = cv::findHomography(previousPoints, currentPoints, cv::RANSAC);
     #endif
     auto end_motion_estimation = now();
 
 
-    auto duration_ms_motion = toMilliseconds(start_motion_estimation, end_motion_estimation);
+    auto duration_ms_motion = 
+                toMilliseconds(start_motion_estimation, end_motion_estimation);
             
     homography_call_count_++;
     homography_avg_duration_ms_ += 
         (duration_ms_motion - homography_avg_duration_ms_) / homography_call_count_;
 
-    if (M.empty() || !cv::checkRange(M)) return H_prev2curr; // // identity matrix response
+    if (M.empty() || !cv::checkRange(M)) 
+        return H_prev2curr; // identity matrix response
 
     if (M.rows == 2 && M.cols == 3) {
         // Convert 2x3 matrix M = [sR | t] to 3x3 homography H
@@ -208,11 +250,14 @@ cv::Mat Stabilizer::estimateMotion(const std::vector<cv::Point2f>& previousPoint
         M.copyTo(H_prev2curr);
     }
 
-    // Let's kill isotropic scaling from the estimated motion (it is typically unstable) - this enhances visual stability.
-    // In the future, we could implement a estimateRigidBodyMotion() that would fit in-image-plane rotation and translation
-    // with fixed unitary scaling factor, so that error is minimized.
-    // Define center of scaling (and rotation) as the center of the image. If we don't use this, we
-    // we will see weird scaling artifacts coming from the top left corner of the image when we kill scaling.
+    // Let's kill isotropic scaling from the estimated motion (it is typically 
+    // unstable) - this enhances visual stability.
+    // In the future, we could implement a estimateRigidBodyMotion() that would fit 
+    // in-image-plane rotation and translation with fixed unitary scaling factor, 
+    // so that error is minimized.
+    // Define center of scaling (and rotation) as the center of the image. If we 
+    // don't use this, we will see weird scaling artifacts coming from the top left 
+    // corner of the image when we kill scaling.
     cv::Point2d rot_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
     HomographyParameters homography_params;
     if(decomposeHomography(H_prev2curr, homography_params, rot_center))
@@ -242,7 +287,11 @@ void Stabilizer::updateTransformations(const cv::Mat& H_prev2curr, uint64_t curr
     }
 }
 
-std::pair<std::vector<cv::KeyPoint>, cv::Mat> filterKeypointByRelativeSize(int image_height, std::vector<cv::KeyPoint> keypoints, cv::Mat descriptors, float max_relative_size = 0.05f) {
+std::pair<std::vector<cv::KeyPoint>, cv::Mat> 
+filterKeypointByRelativeSize(int image_height, 
+                            std::vector<cv::KeyPoint> keypoints, 
+                            cv::Mat descriptors, 
+                            float max_relative_size = 0.05f) {
     // Filter keypoints by size: discard if too big compared to image height:
     // Filter out keypoints that are too large compared to image height
     const float maxAllowedSize = image_height * max_relative_size;
@@ -269,7 +318,8 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
     {
         size_t frame_idx = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
 
-        // If this iteration is the first time we are computing the stabilization transform, use the identity matrix
+        // If this iteration is the first time we are computing the stabilization 
+        // transform, use the identity matrix
         if (accumulatedTransform_.H.empty()) {
             accumulatedTransform_.H = cv::Mat::eye(3, 3, CV_64F);
             accumulatedTransform_.from_frame_idx = frame_idx;
@@ -277,7 +327,8 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         }
         else {
             assert(presentation_frame_idx > 0);
-            Transformation next_transform = stabilizationWindow_.transformations[presentation_frame_idx -1];
+            Transformation next_transform = 
+                stabilizationWindow_.transformations[presentation_frame_idx -1];
             assert(next_transform.from_frame_idx == accumulatedTransform_.to_frame_idx);
 
             // update the accumulated transform by multiplying it with the transformation
@@ -286,40 +337,59 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         }
 
         #if 0
-            // We now have the full accumulated transformation from the anchor frame to the presentation frame
+            // We now have the full accumulated transformation from the anchor frame 
+            // to the presentation frame
             // Let's decompose it to get rotation angle and translation vector
             HomographyParameters homography_params_lock;
             
             // Ensure workingSize_ is valid before calculating image_center
             if (workingSize_.width <= 0 || workingSize_.height <= 0) {
-                throw std::runtime_error("Stabilizer::calculateFullLockStabilization: workingSize_ is invalid. Width: " 
-                                        + std::to_string(workingSize_.width) + ", Height: " + std::to_string(workingSize_.height));
+                throw std::runtime_error(
+                    "Stabilizer::calculateFullLockStabilization: workingSize_ is invalid. "
+                    "Width: " + std::to_string(workingSize_.width) + 
+                    ", Height: " + std::to_string(workingSize_.height));
             }
-            const cv::Point2d image_center(workingSize_.width / 2.0, workingSize_.height / 2.0);
+            const cv::Point2d image_center(workingSize_.width / 2.0, 
+                                          workingSize_.height / 2.0);
 
             // Check if accumulatedTransform_.H is valid before decomposition
-            if (accumulatedTransform_.H.size() != cv::Size(3,3) || !cv::checkRange(accumulatedTransform_.H)) {
-                 throw std::runtime_error("Warning: accumulatedTransform_.H is empty or contains NaN/Inf before decomposition. Frame idx: " + std::to_string(frame_idx));
+            if (accumulatedTransform_.H.size() != cv::Size(3,3) || 
+                !cv::checkRange(accumulatedTransform_.H)) {
+                 throw std::runtime_error(
+                    "Warning: accumulatedTransform_.H is empty or contains NaN/Inf "
+                    "before decomposition. Frame idx: " + std::to_string(frame_idx));
             }
 
-            if (!decomposeHomography(accumulatedTransform_.H, homography_params_lock, image_center)) {
-                throw std::runtime_error("Warning: decomposeHomography failed for frame_idx: " + std::to_string(frame_idx));
+            if (!decomposeHomography(accumulatedTransform_.H, homography_params_lock, 
+                                   image_center)) {
+                throw std::runtime_error(
+                    "Warning: decomposeHomography failed for frame_idx: " + 
+                    std::to_string(frame_idx));
             }
 
-            // Check homography_params_lock.t for NaN/Inf as an extra precaution, though decomposeHomography should ideally handle it
-            if (!cv::checkRange(cv::Mat(homography_params_lock.t))) { // Convert Vec2d to Mat for checkRange
-                throw std::runtime_error("Warning: homography_params_lock.t contains NaN/Inf after successful decomposition. Frame idx: " + std::to_string(frame_idx));
+            // Check homography_params_lock.t for NaN/Inf as an extra precaution, 
+            // though decomposeHomography should ideally handle it
+            if (!cv::checkRange(cv::Mat(homography_params_lock.t))) { 
+                // Convert Vec2d to Mat for checkRange
+                throw std::runtime_error(
+                    "Warning: homography_params_lock.t contains NaN/Inf after "
+                    "successful decomposition. Frame idx: " + std::to_string(frame_idx));
             }
             // Also check other critical params from decomposition
-            if (!std::isfinite(homography_params_lock.s) || !std::isfinite(homography_params_lock.theta)) {
-                throw std::runtime_error("Warning: homography_params_lock.s or .theta is NaN/Inf. Frame idx: " + std::to_string(frame_idx));
+            if (!std::isfinite(homography_params_lock.s) || 
+                !std::isfinite(homography_params_lock.theta)) {
+                throw std::runtime_error(
+                    "Warning: homography_params_lock.s or .theta is NaN/Inf. "
+                    "Frame idx: " + std::to_string(frame_idx));
             }
 
             double accumulated_rotation_angle = homography_params_lock.theta;
             cv::Vec2d accumulated_translation = homography_params_lock.t;
 
-            std::cout << "accumulated_rotation_angle: " << accumulated_rotation_angle * 180.0 / M_PI << " deg" << std::endl;
-            std::cout << "accumulated_translation: " << accumulated_translation(0) << ", " << accumulated_translation(1) << std::endl;
+            std::cout << "accumulated_rotation_angle: " << 
+                        accumulated_rotation_angle * 180.0 / M_PI << " deg" << std::endl;
+            std::cout << "accumulated_translation: " << accumulated_translation(0) << 
+                        ", " << accumulated_translation(1) << std::endl;
 
             
             // The following achieves rotation lock successfully!! Keep it!
@@ -328,8 +398,9 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             new_params.t = cv::Vec2d(0,0);
             cv::Mat H_rotation_lock = composeHomography(new_params, cv::Vec2d(0,0));
 
-            // To achieve full lock, we first need to untranslate the frame by the accumulated translation vector
-            // and only then de-rotate the frame by the accumulated rotation angle.
+            // To achieve full lock, we first need to untranslate the frame by the 
+            // accumulated translation vector and only then de-rotate the frame by 
+            // the accumulated rotation angle.
             cv::Mat H_translation_lock = cv::Mat::eye(3, 3, CV_64F);
             H_translation_lock.at<double>(0, 2) = -accumulated_translation(0);
             H_translation_lock.at<double>(1, 2) = -accumulated_translation(1);
@@ -337,13 +408,17 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             HomographyParameters derotate_params;
             // Set the desired de-rotation angle
             if (!std::isfinite(accumulated_rotation_angle)) {
-                 throw std::runtime_error("Critical: accumulated_rotation_angle is NaN/Inf before creating derotate_params. Frame idx: " + std::to_string(frame_idx));
+                 throw std::runtime_error(
+                    "Critical: accumulated_rotation_angle is NaN/Inf before creating "
+                    "derotate_params. Frame idx: " + std::to_string(frame_idx));
             }
             derotate_params.theta = -accumulated_rotation_angle;
             
             cv::Mat H_derotate = composeHomography(derotate_params, image_center);
             if (!cv::checkRange(H_derotate)) {
-                 throw std::runtime_error("Critical: H_derotate matrix contains NaN/Inf. Frame idx: " + std::to_string(frame_idx));
+                 throw std::runtime_error(
+                    "Critical: H_derotate matrix contains NaN/Inf. Frame idx: " + 
+                    std::to_string(frame_idx));
             }
             
             cv::Mat H_lock = H_translation_lock * H_derotate;
@@ -362,7 +437,9 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
 
         return accumulatedTransform_.H.inv();
     }
-    else if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK || stabilizationMode_ == StabilizationMode::SIFT_FULL_LOCK) { // direct reference frame to current frame motion estimation
+    else if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK || 
+             stabilizationMode_ == StabilizationMode::SIFT_FULL_LOCK) { 
+        // direct reference frame to current frame motion estimation
         // Get the current frame from the presentation index
         cv::Mat currentFrame = stabilizationWindow_.frames[presentation_frame_idx].image;
 
@@ -370,7 +447,8 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         
         // Downscale current frame to working resolution
         cv::Mat currentResized;
-        cv::resize(currentFrame, currentResized, workingSize_, 0, 0, cv::INTER_NEAREST);
+        cv::resize(currentFrame, currentResized, workingSize_, 
+                   0, 0, cv::INTER_NEAREST);
         
         // Convert to grayscale
         cv::Mat currentGray;
@@ -402,23 +480,29 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         std::vector<cv::Point2f> refPoints, currPoints;
 
         // ORB parameters (defined here for clarity, used if mode is ORB_FULL_LOCK)
-        const int ORB_MAX_FEATURES = 2500;        // The maximum number of features to retain
-        const float ORB_SCALE_FACTOR = 1.2f;      // Pyramid decimation ratio, greater than 1
-        const int ORB_PYRAMID_LEVELS = 12;        // The number of pyramid levels
-        const int ORB_EDGE_THRESHOLD = 31;        // Size of the border where features are not detected
-        const int ORB_FIRST_LEVEL = 0;            // The level of pyramid to put source image at
-        const int ORB_WTA_K = 2;                  // The number of points that produce each element of the oriented BRIEF descriptor
-        const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE;  // The default HARRIS_SCORE=0, FAST_SCORE=1
-        const int ORB_PATCH_SIZE = 31;            // Size of the patch used by the oriented BRIEF descriptor
-        const int ORB_FAST_THRESHOLD = 20;        // The FAST threshold for feature detection
-        const float LOWE_RATIO_THRESH = 0.6f;     // Threshold for Lowe's ratio test in feature matching
-        const float MAX_ORB_KEYPOINT_SIZE_RATIO = 0.10f;  // Maximum allowed keypoint size as ratio of image height
+        const int ORB_MAX_FEATURES = 2500;        // Maximum number of features to retain
+        const float ORB_SCALE_FACTOR = 1.2f;      // Pyramid decimation ratio, > 1
+        const int ORB_PYRAMID_LEVELS = 12;        // Number of pyramid levels
+        const int ORB_EDGE_THRESHOLD = 31;        // Border where features not detected
+        const int ORB_FIRST_LEVEL = 0;            // Level of pyramid for source image
+        const int ORB_WTA_K = 2;                  // Points for oriented BRIEF element
+        const cv::ORB::ScoreType ORB_SCORE_TYPE = cv::ORB::FAST_SCORE; // default is HARRIS_SCORE=0, FAST_SCORE=1
+        const int ORB_PATCH_SIZE = 31;            // Patch size for oriented BRIEF
+        const int ORB_FAST_THRESHOLD = 20;        // FAST threshold for feature detection
+        const float LOWE_RATIO_THRESH = 0.6f;     // Threshold for Lowe's ratio test
+        const float MAX_ORB_KEYPOINT_SIZE_RATIO = 0.10f; // Maximum allowed keypoint size as ratio of image height
 
         // SIFT parameters (defined here for clarity, used if mode is SIFT_FULL_LOCK)
         const int SIFT_N_FEATURES = 2500;      // number of best features to retain (0 = unlimited)
         const int SIFT_N_OCTAVE_LAYERS = 3;    // number of layers in each octave
-        const double SIFT_CONTRAST_THRESHOLD = 0.04; // filter out weak features in semi-uniform (low-contrast) regions (higher values yield less features)
-        const double SIFT_EDGE_THRESHOLD = 5;  // filter out edge-like features versus corner-like features (higher values yield more features)
+        
+        // filter out weak features in semi-uniform (low-contrast) regions 
+        // (higher values yield less features)
+        const double SIFT_CONTRAST_THRESHOLD = 0.04; 
+
+        // filter out edge-like vs corner-like features (higher values yield more features)
+        const double SIFT_EDGE_THRESHOLD = 5;  
+        
         const double SIFT_SIGMA = 1.2;         // sigma of Gaussian applied to first octave
         const float SIFT_MAX_KEYPOINT_SIZE_RATIO = 0.05f; // Maximum allowed keypoint size as ratio of image height
 
@@ -426,17 +510,22 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
         const double MAX_RANSAC_REPROJ_THRESHOLD = 5.0;
         const int ROBUST_METHOD_MOTION_ESTIMATION = cv::RANSAC;
 
-        // If we don't have a reference/anchor image yet (referenceGray_ is still empty), do the following:
+        // If we don't have a reference/anchor image yet (referenceGray_ is still empty), 
+        // do the following:
         //   1. Set this frame as reference
         //   2. Initialize the feature detector
         //   3. Filter the keypoints by size
         //   4. Return the identity matrix (no motion to cancel out)
 
         if (referenceGray_.empty()) {
-            std::cout << "Initializing ORB/SIFT FULL_LOCK with new reference image" << std::endl;
-            referenceFrameIdx_ = stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
+            std::cout << "Initializing ORB/SIFT FULL_LOCK with new reference image" 
+                      << std::endl;
+            referenceFrameIdx_ = 
+                stabilizationWindow_.frames[presentation_frame_idx].frame_idx;
             currentGray.copyTo(referenceGray_); // This referenceGray_ is shared for ORB & SIFT
-            previouslyReturnedH = cv::Mat::eye(3, 3, CV_64F); // Reset fallback homography
+            
+            // Reset fallback homography
+            previouslyReturnedH = cv::Mat::eye(3, 3, CV_64F); 
 
             std::vector<cv::KeyPoint> filtered_keypoints_orb;
             cv::Mat filtered_descriptors_orb;
@@ -469,12 +558,12 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
                                     orb_referenceKeypoints_, 
                                     orb_referenceDescriptors_);
                 
-                auto [filtered_kpts, filtered_desc] = filterKeypointByRelativeSize(
-                                                                            referenceGray_.rows,
-                                                                            orb_referenceKeypoints_,
-                                                                            orb_referenceDescriptors_,
-                                                                            MAX_ORB_KEYPOINT_SIZE_RATIO
-                );
+                auto [filtered_kpts, filtered_desc] = 
+                    filterKeypointByRelativeSize(
+                                            referenceGray_.rows,
+                                            orb_referenceKeypoints_,
+                                            orb_referenceDescriptors_,
+                                            MAX_ORB_KEYPOINT_SIZE_RATIO);
                 
                 orb_referenceKeypoints_ = filtered_kpts;
                 orb_referenceDescriptors_ = filtered_desc;
@@ -484,25 +573,27 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
                                      sift_referenceKeypoints_,
                                      sift_referenceDescriptors_);
                 
-                auto [filtered_kpts, filtered_desc] = filterKeypointByRelativeSize(
-                                                                            referenceGray_.rows,
-                                                                            sift_referenceKeypoints_, 
-                                                                            sift_referenceDescriptors_,
-                                                                            SIFT_MAX_KEYPOINT_SIZE_RATIO
-                );
+                auto [filtered_kpts, filtered_desc] = 
+                    filterKeypointByRelativeSize(
+                                            referenceGray_.rows,
+                                            sift_referenceKeypoints_, 
+                                            sift_referenceDescriptors_,
+                                            SIFT_MAX_KEYPOINT_SIZE_RATIO);
                 
                 sift_referenceKeypoints_ = filtered_kpts;
                 sift_referenceDescriptors_ = filtered_desc;
             }
             
-            return cv::Mat::eye(3, 3, CV_64F); // First frame is reference frame, so there is no motion to cancel out.
+            // First frame is reference frame, so there is no motion to cancel out.
+            return cv::Mat::eye(3, 3, CV_64F); 
         }
         
         // For subsequent frames:
         //   1. Detect features on incoming frame.
         //   2. Match features to reference and filter matches. 
         //   3. If not enough matches, return the identity matrix.
-        //   4. If enough matches, compute homography between reference and current frame. If not, return the identity matrix.
+        //   4. If enough matches, compute homography between reference and current 
+        //      frame. If not, return the identity matrix.
         
         try {
             std::vector<cv::KeyPoint> currentKeypoints;
@@ -514,20 +605,20 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
                 orb_->detectAndCompute(currentGray, cv::noArray(), 
                                       currentKeypoints, currentDescriptors);
 
-                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = filterKeypointByRelativeSize(
-                                                                            currentGray.rows, 
-                                                                            currentKeypoints, 
-                                                                            currentDescriptors, 
-                                                                            MAX_ORB_KEYPOINT_SIZE_RATIO);
+                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = 
+                    filterKeypointByRelativeSize(currentGray.rows, 
+                                               currentKeypoints, 
+                                               currentDescriptors, 
+                                               MAX_ORB_KEYPOINT_SIZE_RATIO);
             } else { // SIFT_FULL_LOCK
                 sift_->detectAndCompute(currentGray, cv::noArray(), 
                                        currentKeypoints, currentDescriptors);
 
-                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = filterKeypointByRelativeSize(
-                                                                             currentGray.rows,
-                                                                             currentKeypoints, 
-                                                                             currentDescriptors, 
-                                                                             SIFT_MAX_KEYPOINT_SIZE_RATIO);
+                std::tie(filtered_keypoints_curr, filtered_descriptors_curr) = 
+                    filterKeypointByRelativeSize(currentGray.rows,
+                                               currentKeypoints, 
+                                               currentDescriptors, 
+                                               SIFT_MAX_KEYPOINT_SIZE_RATIO);
             }
 
             currentKeypoints  = filtered_keypoints_curr;
@@ -536,12 +627,16 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             // display feature points for debugging - KEEP THIS!
             #if 1
                 cv::Mat img_debug = currentGray.clone();
-                cv::drawKeypoints(img_debug, currentKeypoints, img_debug, cv::Scalar(0, 0, 255), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+                cv::drawKeypoints(img_debug, currentKeypoints, img_debug, 
+                                cv::Scalar(0, 0, 255), 
+                                cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
                 cv::imshow("features", img_debug);
             #endif
 
             // If not enough features, can't stabilize
-            const auto& referenceKeypoints = (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? orb_referenceKeypoints_ : sift_referenceKeypoints_;
+            const auto& referenceKeypoints = 
+                (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? 
+                orb_referenceKeypoints_ : sift_referenceKeypoints_;
             if (currentKeypoints.size() < 10 || referenceKeypoints.size() < 10) {
                 std::cout << "Not enough features for ORB/SIFT FULL_LOCK" << std::endl;
                 return previouslyReturnedH; 
@@ -552,28 +647,36 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             if (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) {
                 cv::BFMatcher matcher(cv::NORM_HAMMING);
                 std::vector<std::vector<cv::DMatch>> knn_matches;
-                // It's generally better to use knnMatch and apply Lowe's ratio test for better quality matches
+                
+                // It's generally better to use knnMatch and apply Lowe's ratio test 
+                // for better quality matches.
                 // k=2 means find the two best matches for each descriptor
-                matcher.knnMatch(orb_referenceDescriptors_, currentDescriptors, knn_matches, 2);
+                matcher.knnMatch(orb_referenceDescriptors_, 
+                                 currentDescriptors, 
+                                 knn_matches, 2);
                 
                 // Filter matches using Lowe's ratio test
                 for (size_t i = 0; i < knn_matches.size(); i++) {
                     if (knn_matches[i].size() == 2) { // Ensure we have two matches
-                        if (knn_matches[i][0].distance < LOWE_RATIO_THRESH * knn_matches[i][1].distance) {
+                        if (knn_matches[i][0].distance < 
+                            LOWE_RATIO_THRESH * knn_matches[i][1].distance) {
                             good_matches.push_back(knn_matches[i][0]);
                         }
                     }
                 }
-                std::cout << "Good ORB matches after ratio test: " << good_matches.size() << std::endl;
+                std::cout << "Good ORB matches after ratio test: " << 
+                            good_matches.size() << std::endl;
                  if (good_matches.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) {
-                     std::cout << "Not enough good ORB matches for FULL_LOCK" << std::endl;
+                     std::cout << "Not enough good ORB matches for FULL_LOCK" << 
+                                 std::endl;
                      return previouslyReturnedH;
                  }
 
             } else { // SIFT_FULL_LOCK
                 cv::FlannBasedMatcher matcher; // SIFT typically uses FlannBasedMatcher
                 std::vector<cv::DMatch> matches;
-                matcher.match(sift_referenceDescriptors_, currentDescriptors, matches);
+                matcher.match(sift_referenceDescriptors_,
+                              currentDescriptors, matches);
 
                 // Compute average distance among matches[i]
                 double avg_dist = 0;
@@ -584,12 +687,20 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
 
                 // Store good matches based on distance
                 for (int i = 0; i < sift_referenceDescriptors_.rows; i++) {
-                    if (matches[i].distance <= std::max(avg_dist * 0.5, 0.02)) { // Adjusted threshold
+                    // @todo Study and optimize these thresholds:
+                    // - 0.5: Multiplier for average distance threshold 
+                    // - 0.02: Minimum absolute distance threshold
+                    // Current values are empirically determined but need validation
+                    if (matches[i].distance <= std::max(avg_dist * 0.5, 0.02)) { 
                         good_matches.push_back(matches[i]);
                     }
                 }
-                int pct_good_matches = matches.empty() ? 0 : round(100.0 * (double)good_matches.size() / (double)matches.size());
-                std::cout << "Total good SIFT matches: " << good_matches.size() << ", " << pct_good_matches << "%" << std::endl;
+                int pct_good_matches = matches.empty() ? 0 : 
+                    round(100.0 * (double)good_matches.size() / (double)matches.size());
+                
+                std::cout << "Total good SIFT matches: " << good_matches.size() << 
+                            ", " << pct_good_matches << "%" << std::endl;
+                            
                  if (good_matches.size() < MIN_POINTS_FOR_MOTION_ESTIMATION) {
                     std::cout << "Not enough good SIFT matches for FULL_LOCK" << std::endl;
                     return previouslyReturnedH;
@@ -597,7 +708,8 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             }
        
             // Extract location of good matches
-            const auto& refKps = (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? orb_referenceKeypoints_ : sift_referenceKeypoints_;
+            const auto& refKps = (stabilizationMode_ == StabilizationMode::ORB_FULL_LOCK) ? 
+                                orb_referenceKeypoints_ : sift_referenceKeypoints_;
             for (size_t i = 0; i < good_matches.size(); i++) {
                 refPoints.push_back(refKps[good_matches[i].queryIdx].pt);
                 currPoints.push_back(currentKeypoints[good_matches[i].trainIdx].pt);
@@ -618,7 +730,10 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
             return previouslyReturnedH; 
         }
         
-        cv::Mat M = cv::estimateAffinePartial2D(refPoints, currPoints, cv::noArray(), ROBUST_METHOD_MOTION_ESTIMATION, MAX_RANSAC_REPROJ_THRESHOLD);
+        // Bad OpenCV name. Should be called cv::estimateSimilarity2D or cv::estimateEuclidean2D
+        cv::Mat M = cv::estimateAffinePartial2D(refPoints, currPoints, cv::noArray(), 
+                                               ROBUST_METHOD_MOTION_ESTIMATION, 
+                                               MAX_RANSAC_REPROJ_THRESHOLD);
 
         if (!M.empty() && cv::checkRange(M)) {
             if (M.rows == 2 && M.cols == 3) {
@@ -649,9 +764,11 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
 
                 try
                 {
-                    cv::findTransformECC(referenceGray_, currentGray, H_prev2current_float, cv::MOTION_EUCLIDEAN,
-                                    cv::TermCriteria(cv::TermCriteria::MAX_ITER + cv::TermCriteria::EPS, 100, 0.001),
-                                    cv::noArray());
+                    cv::findTransformECC(referenceGray_, currentGray, 
+                                        H_prev2current_float, cv::MOTION_EUCLIDEAN,
+                                        cv::TermCriteria(cv::TermCriteria::MAX_ITER + 
+                                                       cv::TermCriteria::EPS, 100, 0.001),
+                                        cv::noArray());
                 }
                 catch(const std::exception& e)
                 {
@@ -664,7 +781,7 @@ cv::Mat Stabilizer::calculateFullLockStabilization(size_t presentation_frame_idx
                 H_prev2current_float.copyTo(H_prev2current(cv::Rect(0, 0, 3, 2)));
             }
 
-            previouslyReturnedH = H_prev2current.inv(); // inverts to current to previous 
+            previouslyReturnedH = H_prev2current.inv(); // Convert transform from prev->curr to curr->prev
         }
         
         return previouslyReturnedH;
@@ -683,13 +800,17 @@ cv::Mat Stabilizer::calculateGlobalSmoothingStabilization(size_t presentation_fr
     // Initialize cumulative transformation matrix (identity)
     cv::Mat H_accum = cv::Mat::eye(3, 3, CV_64F);
 
-    // Calculate all transformations from presentation_frame to each of the older frames, if any
+    // Calculate all transformations from presentation_frame to each of the older 
+    // frames, if any
     for (int i = presentation_frame_idx; i > 0; --i) {
-        // Update cumulative transformation
+        // Update cumulative transformation and add it to the average
         size_t transformation_idx = i - 1;
-        // the transformation is defined from previous frame to next frame, hence the inverse
-        Transformation T_inv = stabilizationWindow_.transformations[transformation_idx].inverse();
-        H_accum = T_inv.H * H_accum; // left matrix multiplication
+        
+        // each of these transformations is defined from previous frame to next frame, 
+        // hence the inverse
+        Transformation T_inv = 
+            stabilizationWindow_.transformations[transformation_idx].inverse();
+        H_accum = T_inv.H * H_accum; // left matrix multiplication - order matters!
 
         // Add to average
         H_avg += H_accum;
@@ -699,13 +820,18 @@ cv::Mat Stabilizer::calculateGlobalSmoothingStabilization(size_t presentation_fr
     // Reinitialize cumulative transformation matrix (identity)
     H_accum = cv::Mat::eye(3, 3, CV_64F);
 
-    // Calculate all transformations from presentation_frame to each of the newer frames, if any.
-    for (int i = presentation_frame_idx; i < stabilizationWindow_.transformations.size() - 1; ++i) {
-        // Update cumulative transformation
+    // Calculate all transformations from presentation_frame to each of the newer 
+    // frames, if any.
+    for (int i = presentation_frame_idx; 
+         i < stabilizationWindow_.transformations.size() - 1; ++i) {
+        
+        // Update cumulative transformation and add it to the average
         size_t transformation_idx = i;
-        // the transformation is defined from previous frame to next frame, hence no need to invert here
+        
+        // the transformation is defined from previous frame to next frame, 
+        // hence no need to invert here
         Transformation T_inv = stabilizationWindow_.transformations[transformation_idx];
-        H_accum = H_accum * T_inv.H; // right matrix multiplication
+        H_accum = H_accum * T_inv.H; // right matrix multiplication - order matters!
 
         // Add to average
         H_avg += H_accum;
@@ -725,16 +851,23 @@ cv::Mat Stabilizer::calculateGlobalSmoothingStabilization(size_t presentation_fr
     return H_stabilize;
 }
 
-cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_scaled, const cv::Mat& next_trail_background, size_t presentation_frame_idx) {
+cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, 
+                             const cv::Mat& H_stabilize_scaled, 
+                             const cv::Mat& next_trail_background, 
+                             size_t presentation_frame_idx) {
     cv::Mat stabilized = next_trail_background.clone();
     
     if (!H_stabilize_scaled.empty() && cv::checkRange(H_stabilize_scaled)) {
         auto start_warp = now();
         
-        cv::Mat presentation_image = stabilizationWindow_.frames[presentation_frame_idx].image;
+        cv::Mat presentation_image = 
+            stabilizationWindow_.frames[presentation_frame_idx].image;
+        
         cv::Mat warped_image;
+        
         // Warp into a separate Mat
-        cv::warpPerspective(presentation_image, warped_image, H_stabilize_scaled, frame.size());
+        cv::warpPerspective(presentation_image, warped_image, 
+                            H_stabilize_scaled, frame.size());
 
         // Magnify stabilized image around its center:
         cv::Mat H_stabilize_scaled_magnified = cv::Mat::eye(3, 3, CV_64F);
@@ -747,15 +880,20 @@ cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_s
         const int BORDER_SIZE = 10;
         cv::Mat mask = cv::Mat::zeros(frame.size(), CV_8UC1);
         std::vector<cv::Point2f> original_corners(4);
+        
         original_corners[0] = cv::Point2f(BORDER_SIZE, BORDER_SIZE);
-        original_corners[1] = cv::Point2f(presentation_image.cols - BORDER_SIZE, BORDER_SIZE);
-        original_corners[2] = cv::Point2f(presentation_image.cols - BORDER_SIZE, presentation_image.rows - BORDER_SIZE);
-        original_corners[3] = cv::Point2f(BORDER_SIZE, presentation_image.rows - BORDER_SIZE);
+        original_corners[1] = cv::Point2f(presentation_image.cols - BORDER_SIZE, 
+                                         BORDER_SIZE);
+        original_corners[2] = cv::Point2f(presentation_image.cols - BORDER_SIZE, 
+                                         presentation_image.rows - BORDER_SIZE);
+        original_corners[3] = cv::Point2f(BORDER_SIZE, 
+                                         presentation_image.rows - BORDER_SIZE);
         
         std::vector<cv::Point2f> transformed_corners(4);
-        cv::perspectiveTransform(original_corners, transformed_corners, H_stabilize_scaled);
+        cv::perspectiveTransform(original_corners, 
+                                 transformed_corners, H_stabilize_scaled);
         
-        // Convert Point2f to Point for fillConvexPoly
+        // Convert Point2f to Point for fillConvexPoly input compatibility
         std::vector<cv::Point> poly_corners(4);
         for(int i = 0; i < 4; ++i) {
             poly_corners[i] = transformed_corners[i];
@@ -764,11 +902,13 @@ cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_s
         // Draw the filled polygon on the mask
         cv::fillConvexPoly(mask, poly_corners, cv::Scalar(255));
 
-        // // Copy warped image onto the trail background using the mask
-        // // Blur the borders of the warped_image in stabilized using an eroded version of mask so that the borders are not too sharp
+        // Copy warped image onto the trail background using the mask
+        // Blur the borders of the warped_image in stabilized using an eroded 
+        // version of mask so that the borders are not too sharp
         // warped_image.copyTo(stabilized, mask);
         // cv::GaussianBlur(stabilized, stabilized, cv::Size(5, 5), 0);
-        // cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(44, 44));
+        // cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, 
+        //                                          cv::Size(44, 44));
         // cv::erode(mask, mask, kernel);
         // warped_image.copyTo(stabilized, mask);
 
@@ -779,7 +919,8 @@ cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_s
         auto duration_ms_warp = toMilliseconds(start_warp, end_warp);
         
         warp_call_count_++;
-        warp_avg_duration_ms_ += (duration_ms_warp - warp_avg_duration_ms_) / warp_call_count_;
+        warp_avg_duration_ms_ += (duration_ms_warp - warp_avg_duration_ms_) / 
+                                warp_call_count_;
     } else {
         frame.copyTo(stabilized);
     }
@@ -788,7 +929,11 @@ cv::Mat Stabilizer::warpFrame(const cv::Mat& frame, const cv::Mat& H_stabilize_s
 }
 
 std::vector<cv::Point2f> Stabilizer::detectNewFeatures(const cv::Mat& gray, cv::Mat mask) {
-    const int MAX_FEATURES_TO_DETECT = 1300; // Good empirical value for a working height of 360p. This helps limit computation time down the chain.
+    
+    // Good empirical value for a working height of 360p. This helps limit
+    // computation time down the chain.
+    const int MAX_FEATURES_TO_DETECT = 1300; 
+    
     const double QUALITY_LEVEL = 0.01;
     const int MIN_DISTANCE_720p = 10;
     const double ratio = static_cast<double>(gray.rows) / 720.0;
@@ -812,7 +957,11 @@ std::vector<cv::Point2f> Stabilizer::detectNewFeatures(const cv::Mat& gray, cv::
                             GFTT_HARRIS_K);
     
     auto start_gftt = now();
-    cv::goodFeaturesToTrack(gray, featurePoints, MAX_FEATURES_TO_DETECT, QUALITY_LEVEL, MIN_DISTANCE);
+    
+    cv::goodFeaturesToTrack(gray, featurePoints, 
+                            MAX_FEATURES_TO_DETECT, 
+                           QUALITY_LEVEL, MIN_DISTANCE);
+    
     auto end_gftt = now();
     auto duration_ms_gftt = toMilliseconds(start_gftt, end_gftt);
     gftt_call_count_++;
@@ -834,8 +983,10 @@ void Stabilizer::printTimings() {
     auto elapsed_since_print = milli_duration(now() - last_print_time_);
     if (elapsed_since_print >= print_interval_) {
         std::cout << "--- Timing Averages (ms) ---" << std::endl;
-        std::cout << "  Working resolution: " << workingSize_.width << "x" << workingSize_.height 
-                  << " (scale: " << scaleFactor_ << ")" << std::endl;
+        
+        std::cout << "  Working resolution: " << workingSize_.width << "x" << 
+                    workingSize_.height << " (scale: " << scaleFactor_ << ")" << std::endl;
+        
         if (gftt_call_count_ > 0) {
             std::cout << "  goodFeaturesToTrack: " << gftt_avg_duration_ms_.count()
                       << " ms (calls: " << gftt_call_count_ << ")" << std::endl;
@@ -857,18 +1008,24 @@ void Stabilizer::printTimings() {
     }
 }
 
-cv::Mat createWarpedMask(cv::Mat presentation_image, cv::Mat H_stabilize_scaled, int border_size = 10)
+cv::Mat createWarpedMask(cv::Mat presentation_image, cv::Mat H_stabilize_scaled, 
+                         int border_size = 10)
 {
         // Create a mask by transforming the frame corners
         cv::Mat mask = cv::Mat::zeros(presentation_image.size(), CV_8UC1);
         std::vector<cv::Point2f> original_corners(4);
+        
         original_corners[0] = cv::Point2f(border_size, border_size);
-        original_corners[1] = cv::Point2f(presentation_image.cols - border_size, border_size);
-        original_corners[2] = cv::Point2f(presentation_image.cols - border_size, presentation_image.rows - border_size);
-        original_corners[3] = cv::Point2f(border_size, presentation_image.rows - border_size);
+        original_corners[1] = cv::Point2f(presentation_image.cols - border_size, 
+                                          border_size);
+        original_corners[2] = cv::Point2f(presentation_image.cols - border_size, 
+                                          presentation_image.rows - border_size);
+        original_corners[3] = cv::Point2f(border_size, 
+                                          presentation_image.rows - border_size);
         
         std::vector<cv::Point2f> transformed_corners(4);
-        cv::perspectiveTransform(original_corners, transformed_corners, H_stabilize_scaled);
+        cv::perspectiveTransform(original_corners, transformed_corners, 
+                                 H_stabilize_scaled);
         
         // Convert Point2f to Point for fillConvexPoly
         std::vector<cv::Point> poly_corners(4);
@@ -897,24 +1054,36 @@ cv::Mat Stabilizer::copyFeathered(cv::Mat foreground, cv::Mat background_image, 
     // Warp the foreground onto a canvas the size of the background
 
     if (foreground.size() != background_image.size()) {
-        throw std::invalid_argument("Stabilizer: copyFeathered: foreground and background_image must have the same size");
+        throw std::invalid_argument(
+            "Stabilizer: copyFeathered: foreground and background_image must have "
+            "the same size");
     }
-    if (H.size() != cv::Size(3, 3) || H.type() != CV_64F || !cv::checkRange(H)) {
+    if (H.size() != cv::Size(3, 3) 
+        || H.type() != CV_64F || !cv::checkRange(H)) {
         throw std::invalid_argument("Stabilizer: copyFeathered: Bad homography matrix H.");
     }
 
-    cv::warpPerspective(foreground, warped_foreground, H, background_image.size());
+    cv::warpPerspective(foreground, warped_foreground, H, 
+                        background_image.size());
 
     cv::Mat warped_foreground_float;
     warped_foreground.convertTo(warped_foreground_float, CV_32FC3);
 
     cv::Mat background_float;
     cv::Mat background_image_changed = background_image.clone();
-    cv::cvtColor(background_image_changed, background_image_changed, cv::COLOR_BGR2GRAY);
-    cv::GaussianBlur(background_image_changed, background_image_changed, cv::Size(7, 7), 0);
+    
+    cv::cvtColor(background_image_changed, background_image_changed, 
+                cv::COLOR_BGR2GRAY);
+    
+    cv::GaussianBlur(background_image_changed, background_image_changed, 
+                    cv::Size(7, 7), 0);
+    
+    // Progressively fade trailed visual elements by darkening the background
     background_image_changed *= 0.99;
-    background_image_changed -= 1;
-    cv::cvtColor(background_image_changed, background_image_changed, cv::COLOR_GRAY2BGR);
+    
+    cv::cvtColor(background_image_changed, background_image_changed, 
+                cv::COLOR_GRAY2BGR);
+    
     background_image_changed.convertTo(background_float, CV_32FC3);
 
     // Create a plain white mask for the original foreground image
@@ -924,9 +1093,11 @@ cv::Mat Stabilizer::copyFeathered(cv::Mat foreground, cv::Mat background_image, 
     const int BORDER_SIZE = 10;
     cv::Mat foreground_mask = cv::Mat::zeros(foreground.size(), CV_8UC1);
     std::vector<cv::Point2f> original_corners(4);
+    
     original_corners[0] = cv::Point2f(BORDER_SIZE, BORDER_SIZE);
     original_corners[1] = cv::Point2f(foreground.cols - BORDER_SIZE, BORDER_SIZE);
-    original_corners[2] = cv::Point2f(foreground.cols - BORDER_SIZE, foreground.rows - BORDER_SIZE);
+    original_corners[2] = cv::Point2f(foreground.cols - BORDER_SIZE, 
+                                     foreground.rows - BORDER_SIZE);
     original_corners[3] = cv::Point2f(BORDER_SIZE, foreground.rows - BORDER_SIZE);
     
     std::vector<cv::Point2f> transformed_corners(4);
@@ -941,18 +1112,19 @@ cv::Mat Stabilizer::copyFeathered(cv::Mat foreground, cv::Mat background_image, 
     // Draw the filled polygon on the mask
     cv::fillConvexPoly(foreground_mask, poly_corners, cv::Scalar(255));
 
-    cv::Mat warped_binary_mask;
     // Warp the mask using the same homography and to the same size
-    cv::warpPerspective(foreground_mask, warped_binary_mask, H, foreground.size());
+    cv::Mat warped_binary_mask;
+    cv::warpPerspective(foreground_mask, warped_binary_mask, 
+                        H, foreground.size());
 
-
-    cv::Mat feathered_alpha_mask;
-    // Adjust kernel_size for more or less fuzziness. Must be an odd number.
-    // Larger kernel size = more fuzzy edges.
+    // Adjust kernel_size for more or less fuzziness. Larger kernel size = more fuzzy edges.
     const int kernel_size = 101;
-    cv::GaussianBlur(warped_binary_mask, feathered_alpha_mask, cv::Size(kernel_size, kernel_size), 0, 0);
+    cv::Mat feathered_alpha_mask;
+    cv::GaussianBlur(warped_binary_mask, feathered_alpha_mask, 
+                    cv::Size(kernel_size, kernel_size), 0, 0);
 
-    // Convert the single-channel feathered alpha mask to floating point and normalize to [0, 1]
+    // Convert the single-channel feathered alpha mask to floating point and 
+    // normalize to [0, 1]
     cv::Mat alpha_mask_float;
     feathered_alpha_mask.convertTo(alpha_mask_float, CV_32FC1, 1.0/255.0);
 
@@ -995,7 +1167,8 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     
     // Resize the input frame to working resolution
     cv::Mat resizedFrame;
-    cv::resize(frame, resizedFrame, workingSize_, 0, 0, cv::INTER_LINEAR);
+    cv::resize(frame, resizedFrame, workingSize_, 0, 0, 
+               cv::INTER_LINEAR);
 
     // Convert to grayscale
     cv::Mat gray;
@@ -1011,27 +1184,43 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     std::vector<cv::Point2f> filtered_previousPoints;
     std::vector<cv::Point2f> filtered_currentPoints;
 
-    trackFeatures(prevGray_, gray, prevPoints_, filtered_previousPoints, filtered_currentPoints);
+    trackFeatures(prevGray_, gray, prevPoints_, 
+                  filtered_previousPoints, filtered_currentPoints);
 
-    int filtered_currentpoints_percentage = static_cast<int>(100.0 * static_cast<double>(filtered_currentPoints.size()) / static_cast<double>(prevPoints_.size()));
-    //std::cout << "filtered_previousPoints.size() = " << filtered_previousPoints.size() << " (" << filtered_currentpoints_percentage     << "%)" << std::endl;
-    //std::cout << "filtered_currentPoints.size() = " << filtered_currentPoints.size() << " (" << filtered_currentpoints_percentage << "%)" << std::endl;
-
-    cv::Mat H_prev2curr = estimateMotion(filtered_previousPoints, filtered_currentPoints);
+    int filtered_currentpoints_percentage = 
+        static_cast<int>(100.0 * static_cast<double>(filtered_currentPoints.size()) / 
+                        static_cast<double>(prevPoints_.size()));
     
-    // Get current frame index
-    uint64_t current_idx = stabilizationWindow_.frames.back().frame_idx;
+    if(false) {
+        std::cout << "filtered_previousPoints.size() = " << 
+                filtered_previousPoints.size() << " (" << 
+                filtered_currentpoints_percentage << "%)" << std::endl;
+        std::cout << "filtered_currentPoints.size() = " << 
+                filtered_currentPoints.size() << " (" << 
+                filtered_currentpoints_percentage << "%)" << std::endl;
+    }
+    
+    cv::Mat H_prev2curr = estimateMotion(filtered_previousPoints, 
+                                         filtered_currentPoints);
+    
+    uint64_t current_frame_idx = stabilizationWindow_.frames.back().frame_idx;
     
     // Update transformations window
-    updateTransformations(H_prev2curr, current_idx);
+    updateTransformations(H_prev2curr, current_frame_idx);
 
-    // These two would be be false if both totalPastFrames_ and totalFutureFrames_ were 0.
+    // These two assertions would be be false if both totalPastFrames_ 
+    // and totalFutureFrames_ were 0.
     assert(stabilizationWindow_.frames.size() >= 2);
-    assert(stabilizationWindow_.transformations.size() >= 1); // at least one transformation between the first and last frame
+    
+    // at least one transformation between the first and last frame
+    assert(stabilizationWindow_.transformations.size() >= 1); 
 
-    assert(stabilizationWindow_.frames.size() == stabilizationWindow_.transformations.size() + 1); // one more frame than transformations
-    assert(stabilizationWindow_.frames.front().frame_idx == stabilizationWindow_.transformations.front().from_frame_idx);
-    assert(stabilizationWindow_.frames.back().frame_idx == stabilizationWindow_.transformations.back().to_frame_idx);
+    assert(stabilizationWindow_.frames.size() == 
+           stabilizationWindow_.transformations.size() + 1); // one more frame than transformations
+    assert(stabilizationWindow_.frames.front().frame_idx == 
+           stabilizationWindow_.transformations.front().from_frame_idx);
+    assert(stabilizationWindow_.frames.back().frame_idx == 
+           stabilizationWindow_.transformations.back().to_frame_idx);
 
     // Determine which frame to present
     size_t presentation_frame_idx = 0;
@@ -1040,31 +1229,35 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
 
     cv::Mat H_stabilize;
-
     const double epsilon = 1e-6;
     
     cv::Mat H_global_smoothing = calculateGlobalSmoothingStabilization(presentation_frame_idx);
     cv::Mat H_lock = calculateFullLockStabilization(presentation_frame_idx);
     
-    cv::Point2d rot_center = cv::Point2d(workingSize_.width / 2.0, workingSize_.height / 2.0);
+    cv::Point2d rot_center = cv::Point2d(workingSize_.width / 2.0, 
+                                         workingSize_.height / 2.0);
     
     HomographyParameters homography_params_lock;
-    if(!decomposeHomography(H_lock, homography_params_lock))
-    {
+    if(!decomposeHomography(H_lock, homography_params_lock)) {
         std::cerr << "Error: Failed to decompose homography" << std::endl;
         H_lock = cv::Mat::eye(3, 3, CV_64F);
     }
     
-    cv::Mat R = cv::getRotationMatrix2D(rot_center, homography_params_lock.theta * 180.0 / M_PI, 1.0);
+    cv::Mat R = cv::getRotationMatrix2D(rot_center, 
+                                       homography_params_lock.theta * 180.0 / M_PI, 
+                                       1.0);
 
     // Augment R with a (0,0,1) row at the bottom
     cv::Mat R_augmented = cv::Mat::eye(3, 3, CV_64F);
     R.copyTo(R_augmented(cv::Rect(0, 0, 3, 2)));
     R_augmented.at<double>(2, 2) = 1.0;
 
-    cv::Mat H_translation_lock = R_augmented * H_lock; // basically we're re-adding the accumulated rotation to the lock transform, so only the translation is left locked
+    // basically we're re-adding the accumulated rotation to the lock transform, 
+    // so only the translation is left locked
+    cv::Mat H_translation_lock = R_augmented * H_lock; 
 
-    cv::Mat H_rotation_lock = R_augmented.inv(); // we're only cancelling the accumulated rotation, so the translation is left free
+    // we're only cancelling the accumulated rotation, so the translation is left free
+    cv::Mat H_rotation_lock = R_augmented.inv(); 
 
     HomographyParameters homography_params_stabilize;
     cv::Vec2d t_shifted;
@@ -1103,17 +1296,21 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
     }
     
 
-    cv::Mat presentation_image = stabilizationWindow_.frames[presentation_frame_idx].image;
+    cv::Mat presentation_image = 
+        stabilizationWindow_.frames[presentation_frame_idx].image;
 
     cv::Mat presentation_output;
     
     #if 0
-        presentation_output = copyFeathered(presentation_image, trail_background_, H_stabilize_scaled);
+        presentation_output = copyFeathered(presentation_image, trail_background_, 
+                                          H_stabilize_scaled);
         trail_background_ = presentation_output.clone();
     #else
         cv::Scalar avg_color = 0.5 * cv::mean(presentation_image);
         cv::Mat warped_image;
-        cv::warpPerspective(presentation_image, warped_image, H_stabilize_scaled, frame.size(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, avg_color);
+        cv::warpPerspective(presentation_image, warped_image, H_stabilize_scaled,
+                           frame.size(), cv::INTER_LINEAR, 
+                           cv::BORDER_CONSTANT, avg_color);
         presentation_output = warped_image;
     #endif
     
@@ -1132,12 +1329,15 @@ cv::Mat Stabilizer::stabilizeFrame(const cv::Mat& frame) {
  *
  * Given a 2x2 matrix A, computes matrices Q (orthogonal) and R (upper triangular)
  * such that A = QR.
+ 
+ * @note The R matrix here refers to the upper triangular matrix in QR decomposition, 
+ * not to be confused with rotation matrices used elsewhere in this codebase.
  *
  * @param A Input 2x2 matrix (must be of type CV_64F).
  * @param Q Output 2x2 orthogonal matrix (CV_64F).
  * @param R Output 2x2 upper triangular matrix (CV_64F).
  * @throws std::invalid_argument if A is not a 2x2 CV_64F matrix.
- * @throws std::runtime_error if the columns of A are linearly dependent (cannot normalize).
+ * @throws std::runtime_error if the columns of A are linearly dependent
  */
 void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
     // --- Input Validation ---
@@ -1145,11 +1345,14 @@ void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
         throw std::invalid_argument("Input matrix A must be 2x2.");
     }
     if (A.type() != CV_64F) {
-        throw std::invalid_argument("Input matrix A must be of type CV_64F (double precision).");
+        throw std::invalid_argument(
+            "Input matrix A must be of type CV_64F (double precision).");
     }
 
     if (std::abs(cv::determinant(A)) < 1e-6) {
-        throw std::invalid_argument("Input matrix A is singular. QR decomposition requires non-singular matrix.");
+        throw std::invalid_argument(
+            "Input matrix A is singular. QR decomposition requires "
+            "non-singular matrix.");
     }
 
     // --- Initialization ---
@@ -1168,7 +1371,9 @@ void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
     // Process first column (a1)
     double norm_a1 = cv::norm(a1);
     if (norm_a1 < epsilon) { // Check for zero vector
-        throw std::runtime_error("First column is zero or near-zero. QR decomposition requires linearly independent columns.");
+        throw std::runtime_error(
+            "First column is zero or near-zero. QR decomposition requires "
+            "linearly independent columns.");
     }
     cv::Mat q1 = a1 / norm_a1;
 
@@ -1177,15 +1382,19 @@ void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
     cv::Mat u2 = a2 - r12 * q1; // Orthogonal vector
     double norm_u2 = cv::norm(u2);
 
-    if (norm_u2 < epsilon) { // Check for linear dependence (a2 is parallel to a1)
-        throw std::runtime_error("Columns are linearly dependent. QR decomposition requires linearly independent columns.");
+    if (norm_u2 < epsilon) { 
+        // Check for linear dependence (a2 is parallel to a1)
+        throw std::runtime_error(
+            "Columns are linearly dependent. QR decomposition requires "
+            "linearly independent columns.");
     }
     cv::Mat q2 = u2 / norm_u2;
 
     // --- Construct Q and R Matrices ---
-    // Don't confuse Q with R. Q is the orthogonal matrix, R is the upper triangular matrix.
-    // Elsewhere, R is typically used to denote a rotation matrix, not here.
-    // We wanted to follow the Math convention of using Q, R labels for QR decomposition.
+    // Don't confuse Q with R. Q is the orthogonal matrix, R is the upper 
+    // triangular matrix.
+    // Elsewhere, R is typically used to denote a rotation matrix.
+    // Here, we follow the Math convention of using Q, R labels for QR decomposition.
 
     // Fill Q matrix with the orthonormal vectors q1 and q2
     q1.copyTo(Q.col(0));
@@ -1200,30 +1409,35 @@ void qrDecomposition2x2(const cv::Mat& A, cv::Mat& Q, cv::Mat& R) {
     // Assert that QR = A
     double max_diff_A = cv::norm(A - Q*R, cv::NORM_INF);
     if (max_diff_A > epsilon) {
-        throw std::runtime_error("QR decomposition failed. Max difference: " + std::to_string(max_diff_A));
+        throw std::runtime_error("QR decomposition failed. Max difference: " + 
+                               std::to_string(max_diff_A));
     }
 
-    // Assert that Q is orthogonal
+    // Assert that Q is orthogonal, i.e. Q^T = Q^(-1) <=> Q^T * Q = I
     cv::Mat Q_test = Q.t() * Q;
     cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
     double max_diff_Q = cv::norm(Q_test - I, cv::NORM_INF);
     if (max_diff_Q > epsilon) {
-        throw std::runtime_error("Q is not orthogonal. Max difference: " + std::to_string(max_diff_Q));
+        throw std::runtime_error("Q is not orthogonal. Max difference: " + 
+                               std::to_string(max_diff_Q));
     }
 
-    // We don't check that Q is a rotation matrix or a reflection matrix, as we don't care about that here
-    // as it makes sense to accomodate both cases inside this function.
-    // We should check that Q is a rotation matrix elsewhere, where futher context matters, not here.
-    // Here, inside this method, we are only interested in the general QR decomposition.
+    // Q may be either a rotation or reflection matrix (or a rotoreflection - i.e. a 
+    // combination of both) - all cases are valid for general QR decomposition. 
+    // Rotation matrix validation should be performed elsewhere where the specific context 
+    // requires it.
 
     // Assert that R is upper triangular
     R.at<double>(1, 0) = 0.0; // R[1, 0] should be 0
 }
 
 
-bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &params_out, cv::Point2d rot_center) {
+bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &params_out, 
+                                     cv::Point2d rot_center) {
+    
     if (H.empty() || H.rows != 3 || H.cols != 3 || H.type() != CV_64F) {
-        throw std::invalid_argument("Error: Input homography matrix must be a non-empty 3x3 CV_64F matrix.");
+        throw std::invalid_argument(
+            "Error: Input homography matrix must be a non-empty 3x3 CV_64F matrix.");
     }
 
     const double epsilon = 1e-6;
@@ -1235,7 +1449,7 @@ bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &par
         return false;
     }
 
-    // Normalize H such that H(2, 2) = 1
+    // Normalize H such that bottom-right entry is unitary
     double h33 = H.at<double>(2, 2);
     if (std::abs(h33) < epsilon) {
         std::cerr << "Error: H(2, 2) is close to zero. Degenerate homography." << std::endl;
@@ -1261,29 +1475,35 @@ bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &par
     }
 
     double det_sRK = cv::determinant(sRK);
-    if (std::isnan(det_sRK) || std::isinf(det_sRK) || det_sRK < 0 || std::abs(det_sRK) < epsilon) {
-        std::cerr << "Error: determinant of sRK is close to zero. Degenerate homography." << std::endl;
-        return false;
+    
+    if (std::isnan(det_sRK) || std::isinf(det_sRK) || det_sRK < 0 || 
+        std::abs(det_sRK) < epsilon) {
+            std::cerr << "Error: determinant of sRK is close to zero. " << 
+                        "Degenerate homography." << std::endl;
+            return false;
     }
     double s = std::sqrt(det_sRK); // sqrt because A is 2x2 matrix
     cv::Mat RK = sRK / s;
 
     // Extract R and K from RK using QR-decomposition
-    // They are both 2x2 matrices, and there is a closed-form solution for them
-    // R = [cos(theta) -sin(theta); sin(theta) cos(theta)], det(R) = 1, R is a rotation matrix, R^T = R^-1
+    // They are both 2x2 matrices, hence suitable to be computed in closed-form.
+    // R = [cos(theta) -sin(theta); sin(theta) cos(theta)],
+    // R is a rotation matrix, R^T = R^-1, det(R) = +1
     // K = [k1 d; 0 k2], k1*k2 = det(K) = 1, K is a upper triangular matrix
     cv::Mat R, K;
     qrDecomposition2x2(RK, R, K);
 
     if (!cv::checkRange(R) || !cv::checkRange(K)) {
-        std::cerr << "Error: R or K matrix contains non-finite or NaN entries." << std::endl;
+        std::cerr << "Error: R or K matrix contains non-finite or NaN entries." << 
+                    std::endl;
         return false;
     }
 
-    // Check that R is a rotation matrix, not a reflection matrix
+    // Check that R is a rotation matrix, not a reflection matrix, i.e., det(R) = +1
     double det_R = cv::determinant(R);
     if (std::abs(det_R - 1.0) > epsilon) {
-        std::cerr << "Error: R is not a rotation matrix. Det(R) = " << det_R << ", should be 1." << std::endl;
+        std::cerr << "Error: R is not a rotation matrix. Det(R) = " << det_R << 
+                    ", should be 1." << std::endl;
         return false;
     }
 
@@ -1295,22 +1515,25 @@ bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &par
     // Extract k and delta from K
     double k1 = K.at<double>(0, 0);
     double k2 = K.at<double>(1, 1);
-    assert(std::abs(k2 - 1/k1) < epsilon); // K is a upper triangular matrix with det(K) = 1, hence k2 = 1/k1
+    assert(std::abs(k2 - 1/k1) < epsilon); 
+                        // K is a upper triangular matrix with det(K) = 1, hence k2 = 1/k1
 
     double delta = K.at<double>(0, 1);
 
-    // Now we need to shift translation t given scaling s and rotation center rot_center
+    // Now we need to shift translation t given isotropy scaling s and rotation center 
+    // rot_center
     cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
     cv::Vec2d t_shift = s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(rot_center)));
     cv::Vec2d t_vec = cv::Vec2d(t);
     cv::Vec2d t_shifted = t_vec - t_shift;
 
-    // only need k1, as k2 = 1/k1
+    // only need to store k1, as k2 = 1/k1
     params_out = HomographyParameters{s, theta, k1, delta, t_shifted, v};
     return true;
 }
 
-cv::Mat Stabilizer::composeHomography(const HomographyParameters& params, cv::Point2d rot_center) {
+cv::Mat Stabilizer::composeHomography(const HomographyParameters& params, 
+                                     cv::Point2d rot_center) {
     cv::Mat H = cv::Mat::eye(3, 3, CV_64F);
     
     cv::Mat R = (cv::Mat_<double>(2, 2) << 
@@ -1325,7 +1548,8 @@ cv::Mat Stabilizer::composeHomography(const HomographyParameters& params, cv::Po
     cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
 
     // t_shift = s * (I - R) * rot_center
-    cv::Vec2d t_shift = params.s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(rot_center)));
+    cv::Vec2d t_shift = params.s * cv::Vec2d(cv::Mat((I - R) * 
+                                                    cv::Vec2d(rot_center)));
     cv::Vec2d t_shifted = params.t + t_shift;
 
     cv::Mat A = params.s * R * K + t_shifted * params.v.t();
