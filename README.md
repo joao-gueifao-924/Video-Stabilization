@@ -1,4 +1,4 @@
-# Real-time Video Stabilization with Selective Motion Suppression
+# Real-time Video Stabilization with Selective Motion Suppression via Homography Decomposition
 
 A real-time video stabilization system implementing multiple computer vision algorithms for camera motion estimation and suppression. Camera motion can be handled in several ways: reducing overall shake while preserving intentional movement, completely locking the view in place, or selectively canceling only camera translation or rotation. The program has support for live video streams, pre-recorded footage, and a 3D camera simulator for development and testing. Designed for real-time performance without GPU acceleration, the implementation uses traditional computer vision approaches rather than deep learning methods.
 
