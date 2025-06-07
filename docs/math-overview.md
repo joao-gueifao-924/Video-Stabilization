@@ -11,26 +11,26 @@ This document provides a mathematical overview of the core concepts underlying t
 Below we cite (with small adaptations) from the popular, highly regarded *Multiple View Geometry in Computer Vision* book [1]:
 > A projective transformation can be decomposed into a chain of transformations, where each matrix in the chain represents a transformation higher in the hierarchy than the previous one:  
 
-```math
+$$
 H = H_S H_A H_P =
-\begin{matrix}
+\begin{bmatrix}
 sR & t \\
 0^\top & 1
-\end{matrix}
+\end{bmatrix}
 \begin{bmatrix}
 K & 0 \\
 0^\top & 1
-\end{matrix}
-\begin{matrix}
+\end{bmatrix}
+\begin{bmatrix}
 I & 0 \\
 v^\top & \eta
-\end{matrix}
+\end{bmatrix}
 =
-\begin{matrix}
+\begin{bmatrix}
 A & t \\
 v^\top & \eta
-\end{matrix}
-```
+\end{bmatrix}
+$$
 
 >with $A$ a non-singular matrix given by $A = sRK+tv^\top$, and $K$ an upper-triangular matrix normalized as $detK = 1$. This decomposition is valid provided $\eta \neq 0$, and is unique if $s$ is chosen positive.
 >

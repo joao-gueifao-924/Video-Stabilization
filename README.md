@@ -158,7 +158,8 @@ Each of the optional parameters allows you to tune the stabilization process for
 
 ## Runtime Controls
 
-The program displays these controls at startup and creates two windows: **"Original Camera Feed"** and **"Stabilized Output"**.
+At startup, the program displays these controls and opens two windows: **"Original Camera Feed"** and **"Stabilized Output"**.
+If a future stabilization window (`--future-window`) is used, both feeds remain synchronized—the original feed will be delayed as needed to match the stabilized output.
 
 ### Universal Controls (All Modes)
 | Key | Action |
@@ -198,23 +199,24 @@ The program displays these controls at startup and creates two windows: **"Origi
 - Check camera permissions and availability
 - Try different camera IDs (0, 1, 2, etc.)
 - Ensure no other applications are using the camera
+- OpenCV (one of the core dependencies) can occasionally encounter issues when initializing camera capture sessions. In particular, its camera handling may not be fully reliable for production environments.
 
 **Video file not loading:**
 - Verify file path and permissions
-- Check OpenCV codec support for the video format
-- Try converting to MP4 with H.264 encoding
+- Supported video formats and codecs depend on your OpenCV build
 
 **Simulator texture not loading:**
-- Verify the texture image file exists and is readable
-- Supported formats: JPG, PNG, BMP, TIFF
-- Ensure the image path is correct
+- Verify file path and permissions
+- Supported image formats depend on your OpenCV build
 
 **Poor stabilization quality:**
 - Increase working height for better feature detection
 - Adjust temporal window sizes based on motion characteristics
 - Try different stabilization modes for your specific use case
 - Ensure sufficient texture/features in the scene (minimum 10 trackable points required)
-- For ORB/SIFT modes, ensure adequate lighting and contrast
+- Ensure adequate lighting and good contrast in the scene for reliable feature detection—this is important for all modes, but especially for ORB and SIFT.
+- Lower your camera's shutter speed to minimize motion blur, which is especially common in artificial lighting conditions.
+- Ensure your camera has low image noise for optimal feature detection
 
 **Performance issues:**
 - Reduce working height for faster processing
@@ -235,11 +237,9 @@ The program provides real-time performance statistics including:
 ## Known Limitations
 
 - **Translation Lock** and **Rotation Lock** modes are not correctly implemented yet (marked as TODO)
-- Feature-based methods require sufficient scene texture (minimum 10 trackable features)
-- Real-time performance depends on scene complexity and parameter settings
-- ORB and SIFT modes reset reference frame when switching stabilization modes
+- Achieving real-time performance depends on using appropriate parameter settings
 - ECC refinement is implemented but currently disabled for performance reasons
-- Isotropic scaling is automatically removed from motion estimates (may not suit all use cases)
+- Camera motion estimation relies on a rigid-body model, which improves accuracy by reducing the number of degrees of freedom, but may not be suitable for all scenarios.
 
 
 ## Further Reading: Mathematical Overview
