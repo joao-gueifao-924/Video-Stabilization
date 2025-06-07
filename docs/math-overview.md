@@ -53,7 +53,7 @@ We further decompose the homography matrix into fundamental parameters, listed b
 
 A homography transformation between two frames can be expressed in two equivalent forms: as a $3\times3$ matrix $H$ or using the parametric decomposition shown above. Both representations capture the same geometric transformation and can be uniquely converted between each other. Importantly, while the matrix form has $9$ entries, it effectively has $8$ degrees of freedom since homographies are defined up to an arbitrary scale factor – matching the $8$ scalar parameters in the decomposed form: 2 for isotropic scaling $s$ and rotation $θ$, 1 for anisotropic scaling ratio $k_1/k_2$, 1 for shear $\delta$, 2 for translation vector $(t_x, t_y)$, and 2 for perspective vector $(v_x, v_y)$.
 
-The homography decomposition, as implemented in [`decomposeHomography()`](stabilizer.cpp) method, proceeds as follows:
+The homography decomposition, as implemented in `decomposeHomography` method defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp), proceeds as follows:
 
 1. **Normalization**: The input $3 \times 3$ homography matrix $H$ is normalized so that the bottom-right entry $h_{3,3}$ becomes $1$.
 
@@ -103,7 +103,7 @@ The homography decomposition, as implemented in [`decomposeHomography()`](stabil
    - OpenCV and other common image processing and computer vision libraries assign the top-left corner of an image as the origin of the coordinate system. In the context of camera motion stabilization, it is more natural to define rotations to be made around the camera optical axis, approximated by the image centre.
    - To ensure the decomposition is centered at the image center $c$, we correct the translation $t$ by removing the effect of scaling and rotating around a non-zero fixed point. Thus, we define $t = \tilde{t} - s (I - R) c$.
 
-This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For detailed mathematical steps and their implementation, see the [`decomposeHomography()`](stabilizer.cpp) method and its counterpart [`composeHomography()`](stabilizer.cpp).
+This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its counterpart `composeHomography` defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
 
 
 ### Stabilization Mathematics
