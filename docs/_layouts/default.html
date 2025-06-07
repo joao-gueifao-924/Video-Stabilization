@@ -3,8 +3,29 @@
 <head>
   <meta charset="utf-8">
   <title>{{ page.title | default: site.title }}</title>
+  <script>
+    MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']]  // Enable $...$ for inline math
+      },
+      chtml: {
+        displayAlign: 'left',  // Left-align equations
+        scale: 0.9,            // Reduce equation size slightly
+        mtextInheritFont: true // Inherit surrounding font
+      }
+    };
+  </script>
   <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
   <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif !important;
+      line-height: 1.6;
+    }
+    .mathjax_ignore {  /* Class for non-math text you want to exclude from MathJax */
+      font-family: inherit !important;
+    }
+  </style>     
 </head>
 <body>
   {{ content }}
