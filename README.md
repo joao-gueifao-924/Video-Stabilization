@@ -2,7 +2,7 @@
 
 A real-time video stabilization system implementing multiple computer vision algorithms for camera motion estimation and suppression. Camera motion can be handled in several ways: reducing overall shake while preserving intentional movement, completely locking the view in place, or selectively canceling only camera translation or rotation. The program has support for live video streams, pre-recorded footage, and a 3D camera simulator for development and testing. Designed for real-time performance without GPU acceleration, the implementation uses traditional computer vision approaches rather than deep learning methods.
 
-While this README is focused on practical usage instructions, a detailed explanation of the underlying video stabilization algorithms can be found in the [Mathematical Overview](docs/math-overview.md) page. Refer to this document for a comprehensive theoretical background on the methods implemented in this project.
+While this README is focused on practical usage instructions, a detailed explanation of the underlying video stabilization algorithms can be found in the [Mathematical Overview](https://joao-gueifao-924.github.io/Video-Stabilization/math-overview.html) page. Refer to this document for a comprehensive theoretical background on the methods implemented in this project.
 
 This implementation prioritizes real-time performance and educational value, demonstrating multiple approaches to video stabilization in a single, comprehensive system.
 
@@ -244,7 +244,7 @@ The program provides real-time performance statistics including:
 
 ## Further Reading: Mathematical Overview
 
-For a detailed explanation of the mathematical foundations and algorithms behind this video stabilization system—including homography decomposition, camera motion models, and visual feature detection—please refer to the [Mathematical Overview](docs/math-overview.md). This document provides in-depth technical background and references for the methods implemented in the project.
+For a detailed explanation of the mathematical foundations and algorithms behind this video stabilization system—including homography decomposition, camera motion models, and visual feature detection—please refer to the [Mathematical Overview](https://joao-gueifao-924.github.io/Video-Stabilization/math-overview.html). This document provides in-depth technical background and references for the methods implemented in the project.
 
 
 ## License
