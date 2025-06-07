@@ -192,28 +192,28 @@ This section provides a mathematical overview of the core concepts underlying th
 
 Below we cite (with small adaptations) from the popular, highly regarded *Multiple View Geometry in Computer Vision* book [1]:
 > A projective transformation can be decomposed into a chain of transformations, where each matrix in the chain represents a transformation higher in the hierarchy than the previous one:  
->
-> $$
-> H = H_S H_A H_P =
-> \begin{bmatrix}
-> sR & t \\
-> 0^\top & 1
-> \end{bmatrix}
-> \begin{bmatrix}
-> K & 0 \\
-> 0^\top & 1
-> \end{bmatrix}
-> \begin{bmatrix}
-> I & 0 \\
-> v^\top & \eta
-> \end{bmatrix}
-> =
-> \begin{bmatrix}
-> A & t \\
-> v^\top & \eta
-> \end{bmatrix}
-> $$
->
+
+$$
+H = H_S H_A H_P =
+\begin{bmatrix}
+sR & t \\
+0^\top & 1
+\end{bmatrix}
+\begin{bmatrix}
+K & 0 \\
+0^\top & 1
+\end{bmatrix}
+\begin{bmatrix}
+I & 0 \\
+v^\top & \eta
+\end{bmatrix}
+=
+\begin{bmatrix}
+A & t \\
+v^\top & \eta
+\end{bmatrix}
+$$
+
 >with $A$ a non-singular matrix given by $A = sRK+tv^\top$, and $K$ an upper-triangular matrix normalized as $detK = 1$. This decomposition is valid provided $\eta \neq 0$, and is unique if $s$ is chosen positive.
 >
 > Each of the matrices $H_S$, $H_A$, $H_P$ is the “essence” of a transformation of that type (as indicated by the subscripts $S$, $A$, $P$). [...] $H_P$ (2 dof) moves the line at infinity; $H_A$ (2 dof) affects the affine properties, but does not move the line at infinity; and finally, $H_S$ is a general similarity transformation (4 dof) which does not affect the affine or projective properties.
