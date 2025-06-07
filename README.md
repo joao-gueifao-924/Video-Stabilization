@@ -184,6 +184,9 @@ The program displays these controls at startup and creates two windows: **"Origi
 
 This section provides a mathematical overview of the core concepts underlying the video stabilization system. It explains how camera motion is modeled and estimated using homography and more specifically rigid-body transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
 
+> **Note:** The following mathematical overview assumes that the reader is familiar with fundamental concepts in **Linear Algebra** (such as matrices, determinants, and matrix factorizations) and **Projective Geometry** (including homogeneous coordinates, projective transformations, and the geometric interpretation of homographies). A solid grasp of these topics is essential for understanding the derivations and parameterizations presented below.
+
+
 
 ### Homography Decomposition into fundamental parameters
 
@@ -191,25 +194,26 @@ Below we cite (with small adaptations) from the popular, highly regarded *Multip
 > A projective transformation can be decomposed into a chain of transformations, where each matrix in the chain represents a transformation higher in the hierarchy than the previous one:  
 >
 > $$
-H = H_S H_A H_P =
-\begin{bmatrix}
-sR & t \\
-0^\top & 1
-\end{bmatrix}
-\begin{bmatrix}
-K & 0 \\
-0^\top & 1
-\end{bmatrix}
-\begin{bmatrix}
-I & 0 \\
-v^\top & \eta
-\end{bmatrix}
-=
-\begin{bmatrix}
-A & t \\
-v^\top & \eta
-\end{bmatrix}
+> H = H_S H_A H_P =
+> \begin{bmatrix}
+> sR & t \\
+> 0^\top & 1
+> \end{bmatrix}
+> \begin{bmatrix}
+> K & 0 \\
+> 0^\top & 1
+> \end{bmatrix}
+> \begin{bmatrix}
+> I & 0 \\
+> v^\top & \eta
+> \end{bmatrix}
+> =
+> \begin{bmatrix}
+> A & t \\
+> v^\top & \eta
+> \end{bmatrix}
 > $$
+>
 >with $A$ a non-singular matrix given by $A = sRK+tv^\top$, and $K$ an upper-triangular matrix normalized as $detK = 1$. This decomposition is valid provided $\eta \neq 0$, and is unique if $s$ is chosen positive.
 >
 > Each of the matrices $H_S$, $H_A$, $H_P$ is the “essence” of a transformation of that type (as indicated by the subscripts $S$, $A$, $P$). [...] $H_P$ (2 dof) moves the line at infinity; $H_A$ (2 dof) affects the affine properties, but does not move the line at infinity; and finally, $H_S$ is a general similarity transformation (4 dof) which does not affect the affine or projective properties.
@@ -229,7 +233,7 @@ A homography transformation between two frames can be expressed in two equivalen
 
 The homography decomposition, as implemented in [`decomposeHomography()`](stabilizer.cpp) method, proceeds as follows:
 
-1. **Normalization**: The input $3 \times 3$ homography matrix $H$ is normalized so that the bottom-right entry $H_{3,3}$ becomes $1$.
+1. **Normalization**: The input $3 \times 3$ homography matrix $H$ is normalized so that the bottom-right entry $h_{3,3}$ becomes $1$.
 
 2. **Extraction of Components**:
    - The translation vector $t$ is extracted from the top-right $2 \times 1$ block of the normalized matrix.

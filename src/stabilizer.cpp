@@ -1485,7 +1485,7 @@ bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &par
     double s = std::sqrt(det_sRK); // sqrt because A is 2x2 matrix
     cv::Mat RK = sRK / s;
 
-    // Extract R and K from RK using QR-decomposition
+    // Extract R and K from RK using QR-decomposition.
     // They are both 2x2 matrices, hence suitable to be computed in closed-form.
     // R = [cos(theta) -sin(theta); sin(theta) cos(theta)],
     // R is a rotation matrix, R^T = R^-1, det(R) = +1
