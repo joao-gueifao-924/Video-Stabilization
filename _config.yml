@@ -1,0 +1,12 @@
+# This is the configuration file for Jekyll, used to build and serve the project's
+# documentation and technical reference on GitHub Pages. It enables relative links and
+# includes Markdown files in the generated site.
+
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: true
+include:
+  - README.md
+  - docs/math-overview.md
