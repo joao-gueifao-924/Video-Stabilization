@@ -99,6 +99,7 @@ The homography decomposition, as implemented in `decomposeHomography` method def
 7. **Translation Correction**:
    - A similarity (aka. Euclidean transformation) has exactly 1 fixed or invariant point, around which isotropic scaling and rotation take place. Normally, this fixed point is the coordinate system origin $0$.
    - The general form for a similarity with an arbitrary non-zero fixed point $c$, is:
+
     $$
     \begin{align*}
     p' &=& sR(p-c) + c + t = \\
@@ -108,6 +109,7 @@ The homography decomposition, as implemented in `decomposeHomography` method def
        &=& sRp + \tilde{t} \\
     \end{align*}
     $$
+    
    - The translation vector $\tilde{t}$ captures both camera translational movement and the additional shift resulting from scaling and rotating around the point $c$.
    - OpenCV and other common image processing and computer vision libraries assign the top-left corner of an image as the origin of the coordinate system. In the context of camera motion stabilization, it is more natural to define rotations to be made around the camera optical axis, approximated by the image centre.
    - To ensure the decomposition is centered at the image center $c$, we correct the translation $t$ by removing the effect of scaling and rotating around a non-zero fixed point. Thus, we define $t = \tilde{t} - (I - sR)c$.
