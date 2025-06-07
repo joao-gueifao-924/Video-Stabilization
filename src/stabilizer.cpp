@@ -1523,7 +1523,7 @@ bool Stabilizer::decomposeHomography(const cv::Mat& H, HomographyParameters &par
     // Now we need to shift translation t given isotropy scaling s and rotation center 
     // rot_center
     cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
-    cv::Vec2d t_shift = s * cv::Vec2d(cv::Mat((I - R) * cv::Vec2d(rot_center)));
+    cv::Vec2d t_shift = cv::Vec2d(cv::Mat((I - s*R) * cv::Vec2d(rot_center)));
     cv::Vec2d t_vec = cv::Vec2d(t);
     cv::Vec2d t_shifted = t_vec - t_shift;
 
@@ -1547,9 +1547,8 @@ cv::Mat Stabilizer::composeHomography(const HomographyParameters& params,
     // Need to shift translation vector t given scaling s and rotation center
     cv::Mat I = cv::Mat::eye(2, 2, CV_64F);
 
-    // t_shift = s * (I - R) * rot_center
-    cv::Vec2d t_shift = params.s * cv::Vec2d(cv::Mat((I - R) * 
-                                                    cv::Vec2d(rot_center)));
+    // t_shift = (I - sR) * rot_center
+    cv::Vec2d t_shift = cv::Vec2d(cv::Mat((I - params.s * R) * cv::Vec2d(rot_center)));
     cv::Vec2d t_shifted = params.t + t_shift;
 
     cv::Mat A = params.s * R * K + t_shifted * params.v.t();

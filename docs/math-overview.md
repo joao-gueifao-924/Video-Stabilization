@@ -83,25 +83,34 @@ The homography decomposition, as implemented in `decomposeHomography` method def
    - Because we are working with $2 \times 2$ matrices, the classical Gram-Schmidt process is both simple and numerically stable enough for our needs, so we use it instead of more complex methods.
 
 6. **Rotation angle, anisotropic scaling and shear parameters extraction**
-    - We have $R = \begin{bmatrix}
-  cos(\theta) & -sin(\theta) \\
-  sin(\theta) & cos(\theta)
-  \end{bmatrix}$ and $K = \begin{bmatrix}
-  k_1 & \delta \\
-  0 & k_2
-  \end{bmatrix}$ as output from previous step. We easily extract $\theta$ using `atan2` function on the entries of $R$ and remaining parameters $k_1, k_2, \delta$ directly from the entries of $K$.
+    
+   From the previous step, we obtained the rotation matrix $R$ and scaling matrix $K$:
+   
+   $$R = \begin{bmatrix}
+   \cos(\theta) & -\sin(\theta) \\
+   \sin(\theta) & \cos(\theta)
+   \end{bmatrix}, \quad K = \begin{bmatrix}
+   k_1 & \delta \\
+   0 & k_2
+   \end{bmatrix}$$
+   
+   We easily extract $\theta$ using `atan2` function on the entries of $R$ and remaining parameters $k_1, k_2, \delta$ directly from the entries of $K$.
 
 7. **Translation Correction**:
    - A similarity (aka. Euclidean transformation) has exactly 1 fixed or invariant point, around which isotropic scaling and rotation take place. Normally, this fixed point is the coordinate system origin $0$.
-   - The general form for a similarity, for an arbitrary non-zero fixed point, is:
-    $$p' = s[R(p-c)+c]+t = $$
-    $$= sRp - sRc + sc + t = $$
-    $$= sRp + t + sc - sRc = $$
-    $$= sRp + [t + s(I-R)c] = $$
-    $$= sRp + \tilde{t}$$
+   - The general form for a similarity with an arbitrary non-zero fixed point $c$, is:
+    $$
+    \begin{align*}
+    p' &=& sR(p-c) + c + t = \\
+       &=& sRp - sRc + c + t = \\
+       &=& sRp + t + c - sRc = \\
+       &=& sRp + [t + (I-sR)c] = \\
+       &=& sRp + \tilde{t} \\
+    \end{align*}
+    $$
    - The translation vector $\tilde{t}$ captures both camera translational movement and the additional shift resulting from scaling and rotating around the point $c$.
    - OpenCV and other common image processing and computer vision libraries assign the top-left corner of an image as the origin of the coordinate system. In the context of camera motion stabilization, it is more natural to define rotations to be made around the camera optical axis, approximated by the image centre.
-   - To ensure the decomposition is centered at the image center $c$, we correct the translation $t$ by removing the effect of scaling and rotating around a non-zero fixed point. Thus, we define $t = \tilde{t} - s (I - R) c$.
+   - To ensure the decomposition is centered at the image center $c$, we correct the translation $t$ by removing the effect of scaling and rotating around a non-zero fixed point. Thus, we define $t = \tilde{t} - (I - sR)c$.
 
 This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its counterpart `composeHomography` defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
 
