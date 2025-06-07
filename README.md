@@ -193,7 +193,7 @@ This section provides a mathematical overview of the core concepts underlying th
 Below we cite (with small adaptations) from the popular, highly regarded *Multiple View Geometry in Computer Vision* book [1]:
 > A projective transformation can be decomposed into a chain of transformations, where each matrix in the chain represents a transformation higher in the hierarchy than the previous one:  
 
-$$
+```math
 H = H_S H_A H_P =
 \begin{bmatrix}
 sR & t \\
@@ -212,7 +212,7 @@ v^\top & \eta
 A & t \\
 v^\top & \eta
 \end{bmatrix}
-$$
+```
 
 >with $A$ a non-singular matrix given by $A = sRK+tv^\top$, and $K$ an upper-triangular matrix normalized as $detK = 1$. This decomposition is valid provided $\eta \neq 0$, and is unique if $s$ is chosen positive.
 >
