@@ -195,23 +195,23 @@ Below we cite (with small adaptations) from the popular, highly regarded *Multip
 
 ```math
 H = H_S H_A H_P =
-\begin{bmatrix}
+\begin{matrix}
 sR & t \\
 0^\top & 1
-\end{bmatrix}
+\end{matrix}
 \begin{bmatrix}
 K & 0 \\
 0^\top & 1
-\end{bmatrix}
-\begin{bmatrix}
+\end{matrix}
+\begin{matrix}
 I & 0 \\
 v^\top & \eta
-\end{bmatrix}
+\end{matrix}
 =
-\begin{bmatrix}
+\begin{matrix}
 A & t \\
 v^\top & \eta
-\end{bmatrix}
+\end{matrix}
 ```
 
 >with $A$ a non-singular matrix given by $A = sRK+tv^\top$, and $K$ an upper-triangular matrix normalized as $detK = 1$. This decomposition is valid provided $\eta \neq 0$, and is unique if $s$ is chosen positive.
