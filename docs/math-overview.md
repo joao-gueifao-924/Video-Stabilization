@@ -1,3 +1,7 @@
+---
+layout: default
+title: Mathematical Overview
+---
 
 ## Mathematical Overview
 
