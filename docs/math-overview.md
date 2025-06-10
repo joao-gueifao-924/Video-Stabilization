@@ -5,12 +5,22 @@ title: Mathematical Overview
 
 ## Mathematical Overview
 
-This document provides a mathematical overview of the core concepts underlying the video stabilization system. It explains how camera motion is modeled and estimated using homography and more specifically rigid-body transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
+This document provides a mathematical overview of the core concepts underlying the video stabilization system. It explains how camera motion is modeled and estimated using homography and more specifically rigid (Euclidean) transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
 
 > **Note:** The following mathematical overview assumes that the reader is familiar with fundamental concepts in **Linear Algebra** (such as matrices, determinants, and matrix factorizations) and **Projective Geometry** (including homogeneous coordinates, projective transformations, and the geometric interpretation of homographies). A solid grasp of these topics is essential for understanding the derivations and parameterizations presented below.
 
 
 ### Homography Decomposition into fundamental parameters
+The homography matrix is a central mathematical tool for modeling the geometric relationship 
+between two images or views of an approximately planar scene(*) related by camera motion. To 
+better understand and manipulate the effects of camera movement, it is useful to decompose the 
+homography into a set of interpretable parameters, each corresponding to a fundamental 
+geometric transformation such as rotation, scaling, shear, translation, and perspective 
+distortion. This section introduces the mathematical framework for homography decomposition, 
+outlines the meaning of each parameter, and explains how this decomposition enables 
+fine-grained control over video stabilization and motion analysis.
+
+(*A scene is considered "approximately planar or flat" if the differences in depth within the scene are much smaller than the distance from the camera to the scene.)
 
 Below we cite (with small adaptations) from the popular, highly regarded *Multiple View Geometry in Computer Vision* book [1]:
 > A projective transformation can be decomposed into a chain of transformations, where each matrix in the chain represents a transformation higher in the hierarchy than the previous one:  
@@ -40,7 +50,7 @@ $$
 >
 > Each of the matrices $H_S$, $H_A$, $H_P$ is the “essence” of a transformation of that type (as indicated by the subscripts $S$, $A$, $P$). [...] $H_P$ (2 dof) moves the line at infinity; $H_A$ (2 dof) affects the affine properties, but does not move the line at infinity; and finally, $H_S$ is a general similarity transformation (4 dof) which does not affect the affine or projective properties.
 
-In practice, normal frame-to-frame registration with real camera motion produces a non-zero value for $\eta$, the bottom-right entry of the homography matrix. If this entry ever becomes zero, it typically signals a degenerate or pathological case in the estimation process, indicating that the motion estimate has failed. The codebase is designed to handle such likely rare scenarios robustly by substituting the produced estimate by the identity matrix.
+In typical video frame-to-frame registration with real camera motion, the bottom-right entry of the homography matrix, $\eta$, is non-zero. If $\eta$ becomes zero, this usually indicates a degenerate or pathological case in the motion estimation process, meaning the estimate has most likely failed. To handle these rare situations robustly, the codebase replaces the resulting homography with the identity matrix. Note that $\eta = 0$ most commonly arises during perspective removal—a scenario not addressed in our current work.
 
 We further decompose the homography matrix into fundamental parameters, listed below, each corresponding to one of the elementary matrices described above:
 
@@ -53,7 +63,7 @@ We further decompose the homography matrix into fundamental parameters, listed b
 
 A homography transformation between two frames can be expressed in two equivalent forms: as a $3\times3$ matrix $H$ or using the parametric decomposition shown above. Both representations capture the same geometric transformation and can be uniquely converted between each other. Importantly, while the matrix form has $9$ entries, it effectively has $8$ degrees of freedom since homographies are defined up to an arbitrary scale factor – matching the $8$ scalar parameters in the decomposed form: 2 for isotropic scaling $s$ and rotation $θ$, 1 for anisotropic scaling ratio $k_1/k_2$, 1 for shear $\delta$, 2 for translation vector $(t_x, t_y)$, and 2 for perspective vector $(v_x, v_y)$.
 
-The homography decomposition, as implemented in `decomposeHomography` method defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp), proceeds as follows:
+The homography decomposition, as implemented in `decomposeHomography` function defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp), proceeds as follows:
 
 1. **Normalization**: The input $3 \times 3$ homography matrix $H$ is normalized so that the bottom-right entry $h_{3,3}$ becomes $1$.
 
@@ -63,12 +73,12 @@ The homography decomposition, as implemented in `decomposeHomography` method def
    - The upper-left $2 \times 2$ block ($A$) is also extracted.
 
 3. **Projective Correction**:
-   - The matrix $A$ is corrected for projective effects by subtracting the outer product of $t$ and $v$, yielding $sRK = A - t \cdot v^\top$.
+   - The matrix $A$ is corrected for projective effects by subtracting the outer product of $t$ and $v$, yielding $sRK = A - t v^\top$.
    - This isolates the affine part of the transformation.
 
 4. **Isotropic Scaling Extraction**:
    The determinant of the $(sRK)$ matrix is computed. Then, we make use of the following mathematical properties: 
-   - For some scalar $s$ and a $n \times n$ invertible matrix $M$, we have $\det(s M) = s^n \det(M)$ 
+   - For some scalar $s$ and a $n \times n$ square matrix $M$, we have $\det(s M) = s^n \det(M)$ 
    - $R$ is a $2 \times 2$ rotation matrix, hence has positive unitary determinant, $det(R) = 1$
    - $K$ is a $2 \times 2$  upper triangular matrix also with positive unitary determinant, $det(K)=1$
 
@@ -94,11 +104,11 @@ The homography decomposition, as implemented in `decomposeHomography` method def
    0 & k_2
    \end{bmatrix}$$
    
-   We easily extract $\theta$ using `atan2` function on the entries of $R$ and remaining parameters $k_1, k_2, \delta$ directly from the entries of $K$.
+   We easily extract $\theta =\operatorname{atan2}(\operatorname{sin}(\theta), \operatorname{cos}(\theta))$ from the entries of $R$ and remaining parameters $k_1, k_2, \delta$ directly from the entries of $K$.
 
 7. **Translation Correction**:
-   - A similarity (aka. Euclidean transformation) has exactly 1 fixed or invariant point, around which isotropic scaling and rotation take place. Normally, this fixed point is the coordinate system origin $0$.
-   - The general form for a similarity with an arbitrary non-zero fixed point $c$, is:
+   - A similarity has exactly 1 fixed or invariant point, around which isotropic scaling and rotation take place. Normally, this fixed point is the coordinate system origin $O=0$.
+   - The general form for a similarity with an arbitrary fixed point $c$, is:
 
     $$
     \begin{align*}
@@ -106,18 +116,51 @@ The homography decomposition, as implemented in `decomposeHomography` method def
        &=& sRp - sRc + c + t = \\
        &=& sRp + t + c - sRc = \\
        &=& sRp + [t + (I-sR)c] = \\
-       &=& sRp + \tilde{t} \\
+       &=& sRp + t^+ \\
     \end{align*}
     $$
     
-   - The translation vector $\tilde{t}$ captures both camera translational movement and the additional shift resulting from scaling and rotating around the point $c$.
-   - OpenCV and other common image processing and computer vision libraries assign the top-left corner of an image as the origin of the coordinate system. In the context of camera motion stabilization, it is more natural to define rotations to be made around the camera optical axis, approximated by the image centre.
-   - To ensure the decomposition is centered at the image center $c$, we correct the translation $t$ by removing the effect of scaling and rotating around a non-zero fixed point. Thus, we define $t = \tilde{t} - (I - sR)c$.
+   - The translation vector $t^+$ captures both camera translational movement $t$ and the additional shift resulting from scaling and rotating around the point $c$.
+   - In OpenCV and other image processing and computer vision libraries, the coordinate system origin $O=0$ is defined at the top-left corner of the image. However, for the purposes of camera motion stabilization, we choose to model rotations around the camera's optical axis, as this better approximates the typical axis of rotational shake (e.g., when someone films handheld with a cellphone). In practice, for typical cameras, the optical axis is well-approximated by the image center, with coordinates $(\frac{W}{2}, \frac{H}{2})$, where $W$ and $H$ denote the image width and height, respectively. For this reason, we set $c$ to be the image center. (Note: the true rotation axis can be anywhere, and in the given example of handheld filming with a cellphone, the rotation axis almost never is the optical axis, since the camera lenses are frequently located at the corners of the device. Nonetheless, for our practical purposes, this approximation is sufficient.)
+   - To center the homography decomposition at $c$, we adjust the translation as $t = t^+ - (I - sR)c$ to remove scaling and rotation effects about $c$.
 
-This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its counterpart `composeHomography` defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
+This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its inverse `composeHomography` functions defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
 
 
 ### Stabilization Mathematics
+
+Let $I_t(p)$ denote the image captured by a standard 8-bit color camera at time $t \in \mathbb{Z}$. Here, $p = (x, y) \in \mathbb{Z}^2$ specifies the pixel coordinates, and $I_t(p): \mathbb{Z}^2 \to \{0,1,\dots,255\}^3$ returns the RGB color value at each pixel.
+
+In image $I_{t+k}$, for $k \in \mathbb{Z}$, i.e., at an earlier or later time instant $(t+k)$, we perceive same visual contents but in different locations due to camera motion:
+$$
+I_{t+k}(p_{t+k}) \approx I_{t}(p_{t})
+$$#
+
+Here, $\approx$ indicates that the two images are only approximately equal. This is because imaging noise, as well as changes in the scene’s structure or lighting, can occur between times $t$ and $t+k$, causing slight differences between the images. For this approximation to be valid, the time gap $k$ should be small. Furthermore, any changes in the scene—such as moving objects, shape changes, or new objects entering or leaving the frame—should be relatively minor compared to the overall image. In summary, the two images must remain similar enough to be reliably aligned.
+
+To describe camera motion between two time points, we can use a homography transformation:
+
+$$
+p_{t+k} \sim {^{t+k}H}_t\, p_t
+$$
+
+Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H}_t$ is the homography matrix that maps the point $p$ from time $t$ to its new location at time $t+k$.
+
+It's important to note that using a homography to model camera motion is an approximation. This method works best when the scene is relatively flat or the camera is far from the scene. If the camera is close to objects with varying depths, the homography may not accurately capture the true motion, which can limit the effectiveness of video stabilization.
+
+A homography transformation has 8 degrees of freedom, allowing it to represent a wide range of image motions. However, this flexibility can lead to overfitting, especially when the transformation is estimated from noisy feature point matches.
+
+To improve robustness, we use a simpler model: the 2D rigid transformation: 
+
+$$
+p_{t+k} \sim {^{t+k}T}_t\, p = \begin{bmatrix} {^{t+k}R}_t & {^{t+k}t}_t \\0^\top & 1\end{bmatrix}
+$$
+
+where ${^{t+k}R}_t$ is a $2 \times 2$ rotation matrix and $ {^{t+k}t}_t$ is a $2 \times 1$ translation vector. They represent motion exclusively on the image plane, from time instant $t$ to $(t+k)$.
+
+This model has only 3 degrees of freedom—horizontal and vertical translation and in-plane rotation—which directly correspond to typical camera movements on the image plane. By reducing the number of parameters, the 2D rigid model is less sensitive to noise and produces more stable results.
+
+However, this simpler model also has its drawbacks. When the camera experiences more complex movements—such as zooming and significant tilts or rotations out of the image plane—the 2D rigid transformation cannot accurately represent these motions. In such situations, the video stabilization process may introduce noticeable motion artifacts.
 
 #### Global Smoothing
 For a frame at time t with temporal window size W:
@@ -134,7 +177,7 @@ H_stabilize(t) = H(R,t)^(-1)
 Where H(R,t) transforms from reference frame R to current frame t.
 
 #### Motion Model Constraints
-- Uses **2D Rigid-Body** motion model (rotation + translation, no scaling)
+- Uses **2D Rigid (Euclidean)** motion model (rotation + translation, no scaling)
 - Automatically removes isotropic scaling from estimates to prevent instability
 - Center of rotation fixed at image center to avoid scaling artifacts
 - RANSAC outlier rejection for robust parameter estimation
@@ -193,7 +236,7 @@ For ORB and SIFT modes, sophisticated preprocessing enhances feature detection:
 - **ORB Features**: Oriented FAST keypoints with rotated BRIEF descriptors  
 - **SIFT Features**: Lowe's Scale-Invariant Feature Transform algorithm
 - **Homography Estimation**: RANSAC-based robust parameter estimation
-- **Motion Models**: Euclidean (rigid-body) and affine transformation fitting
+- **Motion Models**: Rigid (Euclidean) transformation fitting
 - **CLAHE**: Contrast Limited Adaptive Histogram Equalization for enhanced feature detection
 - **QR Decomposition**: Gram-Schmidt process for 2×2 matrix factorization
 
