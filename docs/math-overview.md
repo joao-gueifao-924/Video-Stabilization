@@ -179,6 +179,7 @@ p_{t-2} &\sim& {^{t-2}H}_{t-1}\, p_{t-1} &\sim& {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, 
 p_{t-3} &\sim& {^{t-3}H}_{t-2}\, p_{t-2} &\sim& {^{t-3}H}_{t-2}\, {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, p_t \\
 \vdots
 \end{align*}
+
 $$
 Generalizing for $t-l$, with $l \in \mathbb{Z}_{>0}$:
 
@@ -194,7 +195,6 @@ Where $$\overset{\curvearrowleft}{\prod_{i=1}^{N}} \left( M_i \right) = M_N . M_
 
 We now proceed in a similar manner for mapping points in image $I_t$ to corresponding points in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
 
-
 $$
 \begin{align*}
 p_{t+1} &\sim& {^{t+1}H}_t\, p_t \\
@@ -203,6 +203,7 @@ p_{t+3} &\sim& {^{t+3}H}_{t+2}\, p_{t+2} &\sim& {^{t+3}H}_{t+2}\, {^{t+2}H}_{t+1
 \vdots
 \end{align*}
 $$
+
 Generalizing for $t+r$, with $r \in \mathbb{Z}_{>0}$:
 
 $$
