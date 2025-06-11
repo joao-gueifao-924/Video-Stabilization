@@ -235,6 +235,8 @@ $$
 
 ## Smoothing camera motion
 
+This section explains the mathematical reasoning behind the `calculateGlobalSmoothingStabilization` function, as implemented in the [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp). It clarifies how and why the algorithm smooths camera motion by averaging transformations across a temporal window.
+
 To smooth camera motion, we apply a low-pass filter over the sequence of values for $p_t$, for varying $t$. A suitable candidate for such filter is the moving average, where we substitute the value for each $p_t$ by the average of the values within its temporal neighbourhood:
 
 $$
@@ -263,14 +265,27 @@ $$
 
 where $I$ denotes the $3 \times 3$ identity matrix.
 
-In order to smooth camera shake, we warp image $I_t$ using homography $Q_t$ which is computed using the consecutive frame-to-frame homographies. The latter can be estimated using multiple alternative ways. 
+To reduce camera shake, we stabilize each frame $I_t$ by warping it with the homography $Q_t$. This smoothing homography $Q_t$ is calculated by combining the sequence of frame-to-frame homographies between neighboring frames, using the formula shown above. These individual homographies can be estimated in several ways; a common and effective method is to track sparse feature points between frames and use their correspondences to compute the transformations, as we'll see shortly below.
 
-#### Global Smoothing
-For a frame at time t with temporal window size W:
-```
-H_smooth(t) = (1/W) · Σ[i=-W/2 to W/2] H(t,t+i)
-```
-Where H(t,t+i) is the transformation from frame t to frame t+i.
+## Image registration
+
+When estimating camera motion between consecutive video frames, optical flow is a well-suited technique. Optical flow relies on the brightness constancy assumption, which states that the intensity of a point in the image remains constant as it moves from one frame to the next. For a detailed explanation of the brightness constancy model and optical flow algorithms, readers are encouraged to consult standard references on the topic.
+
+To accomplish image registration, we rely on robust and efficient algorithm implementations provided by OpenCV. The process consists of two main steps:
+
+1. **Feature Point Detection:**  
+   For each video frame, we identify strong, trackable points using the Shi-Tomasi corner detector, available in OpenCV as [cv::goodFeaturesToTrack](https://docs.opencv.org/4.11.0/d4/d8c/tutorial_py_shi_tomasi.html).
+
+2. **Feature Point Tracking:**  
+   Once these feature points are detected, we track their movement from one frame to the next using the Lucas-Kanade Pyramidal Optical Flow algorithm, implemented as [cv::calcOpticalFlowPyrLK](https://docs.opencv.org/4.11.0/d4/dee/tutorial_optical_flow.html). This method computes a sparse optical flow, efficiently following the detected points across consecutive frames.
+3. **Estimate the transformation between frames:**  
+   For each pair of consecutive video frames, we use the matched feature points to compute a transformation that best aligns them. Instead of fitting a general homography—which can easily overfit to innacurate point correspondences and introduce unwanted distortions—we focus on estimating a 2D rigid body motion, which includes only rotation and translation. This approach is more robust and better suited for video stabilization.
+
+   To find this transformation, we determine the optimal mapping from the detected points in one frame to their corresponding points in the next. We use OpenCV’s [cv::estimateAffinePartial2D](https://docs.opencv.org/4.11.0/d9/d0c/group__calib3d.html#gad767faff73e9cbd8b9d92b955b50062d) function for this purpose. Despite its name, this function actually computes a similarity—composed of uniform scaling, rotation and translation, but not anisotropic scaling nor shear. The term "partial affine" can be misleading, as it suggests a more general transformation than what is actually computed.
+
+   Note that OpenCV does not provide a direct method to fit a pure rigid motion to point correspondences. As a workaround, we compute a similarity transformation (which may include uniform scaling) and then explicitly remove any scaling component, ensuring the result is a true rigid transformation. This provides good enough results for our video stabilization needs.
+
+   If your imaging system is accurate enough (for example, if there is no motion blur), you can choose to use a full homography transformation instead of a rigid or similarity transform. This substitution is straightforward—see the `estimateMotion` function in the [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp) for details on how to implement this change.
 
 #### Motion Locking
 For full motion cancellation relative to reference frame R:
