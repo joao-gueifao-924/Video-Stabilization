@@ -3,11 +3,11 @@ layout: default
 title: Mathematical Overview
 ---
 
-# Mathematical Foundations of Video Stabilization
+# Mathematical Foundations for Real-Time Video Stabilization
 
-This document provides a mathematical overview of the core concepts underlying a video stabilization system ("stabilizer"). It explains how camera motion is modeled and estimated using homographies and more specifically rigid (Euclidean) transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
+This document provides a mathematical overview of the core concepts underlying a video stabilization system ("stabilizer"), available on [GitHub](https://github.com/joao-gueifao-924/Video-Stabilization). It explains how camera motion is modeled and estimated using homographies and, more specifically, rigid (Euclidean) transformations, and describes the decomposition of these transformations into fundamental geometric parameters. In addition, we show how to smooth out shaky video by averaging the estimated inter-frame camera motions, a technique that reduces unwanted shake while preserving intentional movement. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
 
-> **Note:** The following mathematical overview assumes that the reader is familiar with fundamental concepts in **Linear Algebra** (such as matrices, determinants, and matrix factorizations) and **Projective Geometry** (including homogeneous coordinates, projective transformations, and the geometric interpretation of homographies). A solid grasp of these topics is essential for understanding the derivations and parameterizations presented below.
+The following mathematical overview assumes that the reader is familiar with fundamental concepts in **Calculus** and **Linear Algebra** (such as summation and product series, matrices, determinants, and matrix factorizations) and **Projective Geometry** (including homogeneous coordinates, projective transformations, and the geometric interpretation of homographies). A solid grasp of these topics is essential for understanding the derivations and parameterizations presented below.
 
 
 ## Homography Decomposition into fundamental parameters
@@ -112,7 +112,7 @@ The homography decomposition, as implemented in `decomposeHomography` function d
 
     $$
     \begin{align*}
-    p' &=& sR(p-c) + c + t = \\
+    p' &=& sR(p-c) + c + t \\
        &=& sRp - sRc + c + t \\
        &=& sRp + t + c - sRc \\
        &=& sRp + [t + (I-sR)c] \\
@@ -279,7 +279,9 @@ To accomplish image registration, we rely on robust and efficient algorithm impl
 2. **Feature Point Tracking:**  
    Once these feature points are detected, we track their movement from one frame to the next using the Lucas-Kanade Pyramidal Optical Flow algorithm, implemented as [cv::calcOpticalFlowPyrLK](https://docs.opencv.org/4.11.0/d4/dee/tutorial_optical_flow.html). This method computes a sparse optical flow, efficiently following the detected points across consecutive frames.
 3. **Estimate the transformation between frames:**  
-   For each pair of consecutive video frames, we use the matched feature points to compute a transformation that best aligns them. Instead of fitting a general homography—which can easily overfit to innacurate point correspondences and introduce unwanted distortions—we focus on estimating a 2D rigid body motion, which includes only rotation and translation. This approach is more robust and better suited for video stabilization.
+   For each pair of consecutive video frames, we use the matched feature points to compute a transformation that best aligns them. Instead of fitting a general homography, we estimate a rigid body motion. This model includes only rotation and translation. 
+
+   Fitting a full homography can easily overfit to inaccurate point correspondences, even when using robust estimation methods like RANSAC. Overfitting can introduce unwanted distortions and instability. Additionally, if the scene is not approximately planar (for example, if there are objects at significantly different depths compared to camera distance), the estimated homography may be unreliable, further degrading stabilization quality. By focusing on rigid motion, we minimize the effect of these innacuracies and achieve more reliable video stabilization.
 
    To find this transformation, we determine the optimal mapping from the detected points in one frame to their corresponding points in the next. We use OpenCV’s [cv::estimateAffinePartial2D](https://docs.opencv.org/4.11.0/d9/d0c/group__calib3d.html#gad767faff73e9cbd8b9d92b955b50062d) function for this purpose. Despite its name, this function actually computes a similarity—composed of uniform scaling, rotation and translation, but not anisotropic scaling nor shear. The term "partial affine" can be misleading, as it suggests a more general transformation than what is actually computed.
 
@@ -287,19 +289,19 @@ To accomplish image registration, we rely on robust and efficient algorithm impl
 
    If your imaging system is accurate enough (for example, if there is no motion blur), you can choose to use a full homography transformation instead of a rigid or similarity transform. This substitution is straightforward—see the `estimateMotion` function in the [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp) for details on how to implement this change.
 
-#### Motion Locking
-For full motion cancellation relative to reference frame R:
-```
-H_stabilize(t) = H(R,t)^(-1)
-```
-Where H(R,t) transforms from reference frame R to current frame t.
+## Motion Cancellation
 
-#### Motion Model Constraints
-- Uses **2D Rigid (Euclidean)** motion model (rotation + translation, no scaling)
-- Automatically removes isotropic scaling from estimates to prevent instability
-- Center of rotation fixed at image center to avoid scaling artifacts
-- RANSAC outlier rejection for robust parameter estimation
-- Optional **ECC refinement** available but currently disabled for performance
+### Stop All Camera Motion (Freeze the View)
+
+Instead of merely smoothing out camera motion, we can completely eliminate it—making the scene appear perfectly still, as if the camera were locked in place. To accomplish this, each frame $I_t$ is warped using a specific homography matrix. This matrix is constructed by chaining together all the inter-frame transformations from a chosen reference (or anchor) frame up to the current frame, and then taking the inverse of this combined transformation. The result is that all camera movement is canceled, and the scene remains visually fixed on the display.
+
+Inaccuracies in estimating the motion between frames—especially those caused by bland scenes (few trackable feature points), motion blur (from a slow shutter speed relative to camera movement), or uncorrected lens distortion—tend to accumulate as the transformations are chained together. As a result, the supposedly static scene may gradually drift over time. User may want to update the reference frame from time to time to counteract this issue.
+
+### Cancel Camera Rotation
+TODO. Kills all camera rotation, only allowing translational camera motion to take place.
+
+### Cancel Camera Translation
+TODO. Not deemed very useful in practive, but still good for educational purposes.
 
 ## Algorithm Performance Comparison
 
@@ -332,21 +334,6 @@ For ORB and SIFT modes, sophisticated preprocessing enhances feature detection:
 7. **Output Rendering**: Warp frame using computed transformation
 8. **Display**: Present original and stabilized frames side-by-side
 
-### Memory Management
-- Sliding window buffers for frames and transformations
-- Automatic memory cleanup with configurable window sizes
-- Efficient OpenCV matrix operations with minimal copying
-
-### Multi-threading
-- Parallel pixel processing for 3D simulator rendering
-- OpenCV's optimized parallel implementations for computer vision operations
-- Non-blocking keyboard input handling
-
-### Technical Parameters
-- **QR Decomposition**: Custom 2×2 implementation for homography decomposition
-- **RANSAC**: 5.0 pixel reprojection threshold for motion estimation
-- **Feature Scaling**: Resolution-adaptive minimum distances and quality levels
-- **Border Handling**: 10-pixel border exclusion for warp mask generation
 
 ## Technical References
 
