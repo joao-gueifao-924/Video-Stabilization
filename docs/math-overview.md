@@ -148,7 +148,7 @@ $$
 p_{t+k} \sim {^{t+k}H}_t\, p_t
 $$
 
-Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H}_t$ is the homography matrix that maps the point $p_t$ from time $t$ to its new location at time $t+k$. Warping image $I_t$ using ${^{t+k}H}_t$ will make it aligned with image $I_{t+k}$. 
+Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H_t}$ is the homography matrix that maps the point $p_t$ from time $t$ to its new location at time $t+k$. Warping image $I_t$ using ${^{t+k}H_t}$ will make it aligned with image $I_{t+k}$.
 
 It's important to note that using a homography to model camera motion is an approximation. This method works best when the scene is relatively flat or the camera is far from the scene. If the camera is close to objects with varying depths, the homography may not accurately capture the true motion, which can limit the effectiveness of video stabilization.
 
