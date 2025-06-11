@@ -265,7 +265,10 @@ $$
 
 where $I$ denotes the $3 \times 3$ identity matrix.
 
-To reduce camera shake, we stabilize each frame $I_t$ by warping it with the homography $Q_t$. This smoothing homography $Q_t$ is calculated by combining the sequence of frame-to-frame homographies between neighboring frames, using the formula shown above. These individual homographies can be estimated in several ways; a common and effective method is to track sparse feature points between frames and use their correspondences to compute the transformations, as we'll see shortly below.
+To reduce camera shake, we stabilize each frame $I_t$ by warping it with the homography $Q_t$. This smoothing homography $Q_t$ is calculated by combining the sequence of frame-to-frame homographies between neighboring frames, using the formula shown above. These individual homographies can be estimated in several ways; a common and effective method is to track sparse feature points between frames and use their correspondences to compute the transformations, as we'll see in next section.
+
+The choice of values for $M$ and $N$ presents a trade-off. While increasing both past and future window sides yields a smoother stabilization, it comes at the expense of increased image cropping when in presence of strong camera shake. Also, a larger future window side yields an increased video presentation delay, as all frames ahead of the presented frame $I_t$ will need to be buffered so that computations can take place.
+
 
 ## Image registration
 
@@ -293,27 +296,29 @@ To accomplish image registration, we rely on robust and efficient algorithm impl
 
 ### Stop All Camera Motion (Freeze the View)
 
-Instead of merely smoothing out camera motion, we can completely eliminate it—making the scene appear perfectly still, as if the camera were locked in place. To accomplish this, each frame $I_t$ is warped using a specific homography matrix. This matrix is constructed by chaining together all the inter-frame transformations from a chosen reference (or anchor) frame up to the current frame, and then taking the inverse of this combined transformation. The result is that all camera movement is canceled, and the scene remains visually fixed on the display.
+Instead of merely smoothing out camera motion, we can completely eliminate it—making the scene appear perfectly still, as if the camera were locked in place. For this to happen, each image $I_t$ is warped using the homography matrix that aligns it to image $I_{t-L}$, i.e., a reference frame captured $L$ frames ago:
 
-Inaccuracies in estimating the motion between frames—especially those caused by bland scenes (few trackable feature points), motion blur (from a slow shutter speed relative to camera movement), or uncorrected lens distortion—tend to accumulate as the transformations are chained together. As a result, the supposedly static scene may gradually drift over time. User may want to update the reference frame from time to time to counteract this issue.
+$$
+p_{t-L} \sim {^{t-L}H}_t\, p_t
+$$
+
+This results in all camera movement being canceled, and the scene remaining visually fixed on the display.
+
+To compute this homography matrix, we have implemented three different approaches:
+
+- **Accumulated Optical Flow**: This matrix is constructed by chaining together all inter-frame transformations from a chosen reference (or anchor) frame up to the current frame, and then taking the inverse of this combined transformation. Inaccuracies in estimating the motion between frames—especially those caused by bland scenes (few trackable feature points), motion blur (from a slow shutter speed relative to camera movement), or uncorrected lens distortion—tend to accumulate as the transformations are chained together. As a result, the supposedly static scene may gradually drift over time. User may want to update the reference frame from time to time to counteract this issue.
+
+- **ORB-based Registration**: Employs Oriented FAST and Rotated BRIEF features for direct frame alignment between presented frames and a reference frame. Registering or aligning the current frame directly into the reference frame avoids the gradual drift which occurs due to innacurate inter-frame motion accumulation. Unfortunately, the produced results were poor, at least for the camera and hyperparameters used while development of the stabilizer took place. Further research is deemed necessary.
+- **SIFT-based Registration**: Same as for ORB-based Registration but uses Scale-Invariant Feature Transform instead for highest accuracy in frame registration. Unfortunately, the results were also poor. Further research is deemed necessary.
+
+# Note: 
+**all content below is still a work in progress**
 
 ### Cancel Camera Rotation
 TODO. Kills all camera rotation, only allowing translational camera motion to take place.
 
 ### Cancel Camera Translation
 TODO. Not deemed very useful in practive, but still good for educational purposes.
-
-## Algorithm Performance Comparison
-
-### Optical Flow vs Feature Matching
-- **Optical Flow**: Fastest, good for small motions, can drift over time, requires ≥10 tracked points, ~1300 features max
-- **ORB Features**: Balanced speed/accuracy, robust to moderate scene changes, up to 2500 features, Hamming distance matching
-- **SIFT Features**: Highest accuracy, best for large motions, computationally intensive, up to 2500 features, Flann-based matching
-
-### Temporal Window Effects
-- **Larger Past Window**: Smoother stabilization, better noise reduction
-- **Larger Future Window**: Reduced lag, improved motion prediction, increased delay
-- **Higher Working Resolution**: Better accuracy, increased computation time, more features detected
 
 ### Image Preprocessing Pipeline
 For ORB and SIFT modes, sophisticated preprocessing enhances feature detection:
@@ -333,17 +338,6 @@ For ORB and SIFT modes, sophisticated preprocessing enhances feature detection:
 6. **Stabilization**: Apply motion compensation based on selected mode
 7. **Output Rendering**: Warp frame using computed transformation
 8. **Display**: Present original and stabilized frames side-by-side
-
-
-## Technical References
-
-- **Lucas-Kanade Optical Flow**: Shi-Tomasi corner detection with pyramidal LK tracking
-- **ORB Features**: Oriented FAST keypoints with rotated BRIEF descriptors  
-- **SIFT Features**: Lowe's Scale-Invariant Feature Transform algorithm
-- **Homography Estimation**: RANSAC-based robust parameter estimation
-- **Motion Models**: Rigid (Euclidean) transformation fitting
-- **CLAHE**: Contrast Limited Adaptive Histogram Equalization for enhanced feature detection
-- **QR Decomposition**: Gram-Schmidt process for 2×2 matrix factorization
 
 ## References
 
