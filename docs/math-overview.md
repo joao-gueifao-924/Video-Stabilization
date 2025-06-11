@@ -179,8 +179,8 @@ p_{t-2} &\sim& {^{t-2}H}_{t-1}\, p_{t-1} &\sim& {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, 
 p_{t-3} &\sim& {^{t-3}H}_{t-2}\, p_{t-2} &\sim& {^{t-3}H}_{t-2}\, {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, p_t \\
 \vdots
 \end{align*}
-
 $$
+
 Generalizing for $t-l$, with $l \in \mathbb{Z}_{>0}$:
 
 $$
@@ -191,7 +191,11 @@ p_{t-l} &\sim {^{t-l}H}_{t-l+1}\,{^{t-l+1}H}_{t-l+2} \cdots {^{t-1}H}_t\, p_t \L
 \end{align*}
 $$
 
-Where $$\overset{\curvearrowleft}{\prod_{i=1}^{N}} \left( M_i \right) = M_N . M_{N-1}.M_{N-2}. \cdots . M_1$$ denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
+Where
+
+$$\overset{\curvearrowleft}{\prod_{i=1}^{N}} \left( M_i \right) = M_N . M_{N-1}.M_{N-2}. \cdots . M_1$$
+
+denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
 
 We now proceed in a similar manner for mapping points in image $I_t$ to corresponding points in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
 
@@ -218,7 +222,7 @@ To smooth camera motion, we apply a low-pass filter over the sequence of values 
 
 $$
 \begin{align*}
-\={p_t} &= \frac{p_{t-M} + p_{t-(M-1)} + \cdots + p_{t-1} + p_t + p_{t+1} + \cdots + p_{t+(N-1)} + p_{t+N}}{M+1+N} \\
+\bar{p_t} &= \frac{p_{t-M} + p_{t-(M-1)} + \cdots + p_{t-1} + p_t + p_{t+1} + \cdots + p_{t+(N-1)} + p_{t+N}}{M+1+N} \\
 &= \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M}p_{t-l} + p_t + \sum_{r=+1}^{+N}p_{t+r} \right)
 \end{align*}
 $$
