@@ -214,6 +214,15 @@ p_{t+r} &\sim {^{t+r}H}_{t+r-1}\,{^{t+r-1}H}_{t+r-2} \cdots {^{t+1}H}_t\, p_t \L
 \end{align*}
 $$
 
+To smooth camera motion, we apply a low-pass filter over the sequence of values for $p_t$, for varying $t$. A suitable candidate for such filter is the moving average, where we substitute the value for each $p_t$ by the average of the values within its neighbourhood:
+
+$$
+\begin{align*}
+\={p_t} &= \frac{p_{t-M} + p_{t-(M-1)} + \cdots + p_{t-1} + p_t + p_{t+1} + \cdots + p_{t+(N-1)} + p_{t+N}}{M+1+N} \\
+&= \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M}p_{t-l} + p_t + \sum_{r=+1}^{+N}p_{t+r} \right)
+\end{align*}
+$$
+
 #### Global Smoothing
 For a frame at time t with temporal window size W:
 ```
