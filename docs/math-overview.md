@@ -190,7 +190,7 @@ p_{t-l} &\sim {^{t-l}H}_{t-l+1}\,{^{t-l+1}H}_{t-l+2} \cdots {^{t-1}H}_t\, p_t \L
 \end{align*}
 $$
 
-Where $$\overset{\curvearrowleft}{{\prod_{i=1}^{N}}}\left( M_i \right) = M_N . M_{N-1}.M_{N-2}. \cdots . M_1$$ denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
+Where $$\overset{\curvearrowleft}{\prod_{i=1}^{N}} \left( M_i \right) = M_N . M_{N-1}.M_{N-2}. \cdots . M_1$$ denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
 
 We now proceed in a similar manner for mapping points in image $I_t$ to corresponding points in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
 
