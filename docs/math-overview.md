@@ -218,7 +218,7 @@ p_{t+r} &\sim {^{t+r}H}_{t+r-1}\,{^{t+r-1}H}_{t+r-2} \cdots {^{t+1}H}_t\, p_t \L
 \end{align*}
 $$
 
-To smooth camera motion, we apply a low-pass filter over the sequence of values for $p_t$, for varying $t$. A suitable candidate for such filter is the moving average, where we substitute the value for each $p_t$ by the average of the values within its neighbourhood:
+To smooth camera motion, we apply a low-pass filter over the sequence of values for $p_t$, for varying $t$. A suitable candidate for such filter is the moving average, where we substitute the value for each $p_t$ by the average of the values within its temporal neighbourhood:
 
 $$
 \begin{align*}
@@ -226,6 +226,25 @@ $$
 &= \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M}p_{t-l} + p_t + \sum_{r=+1}^{+N}p_{t+r} \right)
 \end{align*}
 $$
+
+where $M$ and $N$ are the number of video frames to the left and right of the presented frame at time $t$, respectively.
+
+We can now express both $p_{t-l}$ and $p_{t+r}$ in terms of $p_t$ by applying the appropriate homography transformations (we change $=$ equality by $\sim$ proportionality):
+
+$$
+\bar{p_t} \sim \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M} \overset{\curvearrowleft}{\prod_{i=1}^{l}}\left( {^{t-i}H}_{t-i+1} \right) p_t + p_t + \sum_{r=+1}^{+N} \overset{\curvearrowleft}{\prod_{i=1}^{r}}\left( {^{t+i}H}_{t+i-1} \right) p_t \right)
+$$
+
+We now factor out $p_t$:
+
+$$
+\begin{align*}
+\bar{p_t} &\sim \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M} \overset{\curvearrowleft}{\prod_{i=1}^{l}}\left( {^{t-i}H}_{t-i+1} \right) + I + \sum_{r=+1}^{+N} \overset{\curvearrowleft}{\prod_{i=1}^{r}}\left( {^{t+i}H}_{t+i-1} \right) \right) p_t \\
+&\sim Q_t\, p_t
+\end{align*}
+$$
+
+In order to smooth camera shake, we warp image $I_t$ using homography $Q_t$.
 
 #### Global Smoothing
 For a frame at time t with temporal window size W:
