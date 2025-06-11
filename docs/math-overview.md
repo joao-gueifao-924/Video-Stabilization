@@ -127,16 +127,20 @@ The homography decomposition, as implemented in `decomposeHomography` function d
 This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its inverse `composeHomography` functions defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
 
 
-### Stabilization Mathematics
+### Modelling Camera Motion
 
-Let $I_t(p)$ denote the image captured by a standard 8-bit color camera at time $t \in \mathbb{Z}$. Here, $p = (x, y) \in \mathbb{Z}^2$ specifies the pixel coordinates, and $I_t(p): \mathbb{Z}^2 \to \{0,1,\dots,255\}^3$ returns the RGB color value at each pixel.
+In this section, we introduce the mathematical models used to describe camera motion between video frames. Understanding these models is essential for analyzing and stabilizing video sequences, as they provide a framework for representing how the camera moves and how this motion affects the appearance of the captured images.
 
-In image $I_{t+k}$, for $k \in \mathbb{Z}$, i.e., at an earlier or later time instant $(t+k)$, we perceive same visual contents but in different locations due to camera motion:
+
+Let $I_t(p)$ denote the image captured by a standard 8-bit color camera at time $t \in \mathbb{Z}$. Here, $p = (x, y) \in \mathbb{Z}^2$ specifies the pixel coordinates, and $I_t(p): \mathbb{Z}^2 \to \lbrace0,1,\dots,255\rbrace^3$ returns the RGB color value at each pixel.
+
+In image $I_{t+k}$, for $k \in \mathbb{Z}$, i.e., at an earlier or later time instant $t+k$, we perceive same visual contents but in different locations due to camera motion:
+
 $$
 I_{t+k}(p_{t+k}) \approx I_{t}(p_{t})
-$$#
+$$
 
-Here, $\approx$ indicates that the two images are only approximately equal. This is because imaging noise, as well as changes in the scene’s structure or lighting, can occur between times $t$ and $t+k$, causing slight differences between the images. For this approximation to be valid, the time gap $k$ should be small. Furthermore, any changes in the scene—such as moving objects, shape changes, or new objects entering or leaving the frame—should be relatively minor compared to the overall image. In summary, the two images must remain similar enough to be reliably aligned.
+Here, $\approx$ indicates that the two images are only approximately equal. This is because imaging noise, as well as changes in the scene’s structure or lighting, can occur between times $t$ and $t+k$, causing slight differences between the images. For this approximation to be valid, the time gap $k$ should be small to minimize these effects. Furthermore, any changes in the scene—such as moving objects, shape changes, or new objects entering or leaving the frame—should be relatively minor compared to the overall image size. In summary, the two images must retain enough visual similarity to be reliably aligned.
 
 To describe camera motion between two time points, we can use a homography transformation:
 
@@ -144,23 +148,70 @@ $$
 p_{t+k} \sim {^{t+k}H}_t\, p_t
 $$
 
-Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H}_t$ is the homography matrix that maps the point $p$ from time $t$ to its new location at time $t+k$.
+Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H}_t$ is the homography matrix that maps the point $p_t$ from time $t$ to its new location at time $t+k$. Warping image $I_t$ using ${^{t+k}H}_t$ will make it aligned with image $I_{t+k}$. 
 
 It's important to note that using a homography to model camera motion is an approximation. This method works best when the scene is relatively flat or the camera is far from the scene. If the camera is close to objects with varying depths, the homography may not accurately capture the true motion, which can limit the effectiveness of video stabilization.
 
-A homography transformation has 8 degrees of freedom, allowing it to represent a wide range of image motions. However, this flexibility can lead to overfitting, especially when the transformation is estimated from noisy feature point matches.
+A homography transformation has 8 degrees of freedom, allowing it to represent a wide range of image motions. However, this flexibility can lead to overfitting, especially when the transformation is estimated from noisy/inaccurate feature point matches.
 
-To improve robustness, we use a simpler model: the 2D rigid transformation: 
+To improve robustness, we can use a simpler model: the 2D rigid transformation: 
 
 $$
 p_{t+k} \sim {^{t+k}T}_t\, p = \begin{bmatrix} {^{t+k}R}_t & {^{t+k}t}_t \\0^\top & 1\end{bmatrix}
 $$
 
-where ${^{t+k}R}_t$ is a $2 \times 2$ rotation matrix and $ {^{t+k}t}_t$ is a $2 \times 1$ translation vector. They represent motion exclusively on the image plane, from time instant $t$ to $(t+k)$.
+where ${^{t+k}R}_t$ is a $2 \times 2$ rotation matrix and $ {^{t+k}t}_t$ is a $2 \times 1$ translation vector. They represent motion exclusively on the image plane, from time instant $t$ to $t+k$.
 
 This model has only 3 degrees of freedom—horizontal and vertical translation and in-plane rotation—which directly correspond to typical camera movements on the image plane. By reducing the number of parameters, the 2D rigid model is less sensitive to noise and produces more stable results.
 
-However, this simpler model also has its drawbacks. When the camera experiences more complex movements—such as zooming and significant tilts or rotations out of the image plane—the 2D rigid transformation cannot accurately represent these motions. In such situations, the video stabilization process may introduce noticeable motion artifacts.
+However, this simpler model also has its drawbacks. When the camera undergoes more complex movements—such as zooming or significant tilts and rotations out of the image plane—the 2D rigid transformation cannot accurately capture these motions. As a result, the video stabilization process, which relies on an appropriate motion model, may produce visible motion artifacts in the output video.
+
+The 2D rigid (Euclidean) transformation is simply a specific case of the broader 2D homography. In this document, we use the term "homography" to describe all transformations between video frames—whether they are rigid (rotation and translation only) or more general (including scaling, shear, or perspective). When needed, we will clearly indicate the specific type of transformation being discussed.
+
+#### Transformation chaining
+
+Between successive video frames, the tranformations that align consecutive pairs of images can be chained. We start with mapping points in image $I_t$ to corresponding points in older images $I_{t-1}, I_{t-2}, I_{t-3}, \dots$:
+
+$$
+\begin{align*}
+p_{t-1} &\sim& {^{t-1}H}_t\, p_t \\
+p_{t-2} &\sim& {^{t-2}H}_{t-1}\, p_{t-1} &\sim& {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, p_t \\
+p_{t-3} &\sim& {^{t-3}H}_{t-2}\, p_{t-2} &\sim& {^{t-3}H}_{t-2}\, {^{t-2}H}_{t-1}\, {^{t-1}H}_t\, p_t \\
+\vdots
+\end{align*}
+$$
+Generalizing for $t-l$, with $l \in \mathbb{Z}_{>0}$:
+
+$$
+\begin{align*}
+p_{t-l} &\sim {^{t-l}H}_{t-l+1}\,{^{t-l+1}H}_{t-l+2} \cdots {^{t-1}H}_t\, p_t \Leftrightarrow \\
+
+\Leftrightarrow p_{t-l} &\sim \overset{\curvearrowleft}{\prod_{i=1}^{l}}\left( {^{t-i}H}_{t-i+1} \right) p_t
+\end{align*}
+$$
+
+Where $$\overset{\curvearrowleft}{{\prod_{i=1}^{N}}}\left( M_i \right) = M_N . M_{N-1}.M_{N-2}. \cdots . M_1$$ denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
+
+We now proceed in a similar manner for mapping points in image $I_t$ to corresponding points in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
+
+
+$$
+\begin{align*}
+p_{t+1} &\sim& {^{t+1}H}_t\, p_t \\
+p_{t+2} &\sim& {^{t+2}H}_{t+1}\, p_{t+1} &\sim& {^{t+2}H}_{t+1}\, {^{t+1}H}_t\, p_t \\
+p_{t+3} &\sim& {^{t+3}H}_{t+2}\, p_{t+2} &\sim& {^{t+3}H}_{t+2}\, {^{t+2}H}_{t+1}\, {^{t+1}H}_t\, p_t \\
+\vdots
+\end{align*}
+$$
+Generalizing for $t+r$, with $r \in \mathbb{Z}_{>0}$:
+
+$$
+\begin{align*}
+p_{t+r} &\sim {^{t+r}H}_{t+r-1}\,{^{t+r-1}H}_{t+r-2} \cdots {^{t+1}H}_t\, p_t \Leftrightarrow \\
+
+\Leftrightarrow p_{t+r} &\sim \overset{\curvearrowleft}{\prod_{i=1}^{r}}\left( {^{t+i}H}_{t+i-1} \right) p_t
+\end{align*}
+$$
 
 #### Global Smoothing
 For a frame at time t with temporal window size W:
