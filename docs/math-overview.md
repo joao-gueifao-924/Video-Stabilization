@@ -3,14 +3,14 @@ layout: default
 title: Mathematical Overview
 ---
 
-## Mathematical Overview
+# Mathematical Foundations of Video Stabilization
 
-This document provides a mathematical overview of the core concepts underlying the video stabilization system. It explains how camera motion is modeled and estimated using homography and more specifically rigid (Euclidean) transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
+This document provides a mathematical overview of the core concepts underlying a video stabilization system ("stabilizer"). It explains how camera motion is modeled and estimated using homographies and more specifically rigid (Euclidean) transformations, and describes the decomposition of these transformations into fundamental geometric parameters. Understanding these principles is essential for grasping how the stabilizer separates and selectively suppresses different types of camera movement.
 
 > **Note:** The following mathematical overview assumes that the reader is familiar with fundamental concepts in **Linear Algebra** (such as matrices, determinants, and matrix factorizations) and **Projective Geometry** (including homogeneous coordinates, projective transformations, and the geometric interpretation of homographies). A solid grasp of these topics is essential for understanding the derivations and parameterizations presented below.
 
 
-### Homography Decomposition into fundamental parameters
+## Homography Decomposition into fundamental parameters
 The homography matrix is a central mathematical tool for modeling the geometric relationship 
 between two images or views of an approximately planar scene(*) related by camera motion. To 
 better understand and manipulate the effects of camera movement, it is useful to decompose the 
@@ -50,7 +50,7 @@ $$
 >
 > Each of the matrices $H_S$, $H_A$, $H_P$ is the “essence” of a transformation of that type (as indicated by the subscripts $S$, $A$, $P$). [...] $H_P$ (2 dof) moves the line at infinity; $H_A$ (2 dof) affects the affine properties, but does not move the line at infinity; and finally, $H_S$ is a general similarity transformation (4 dof) which does not affect the affine or projective properties.
 
-In typical video frame-to-frame registration with real camera motion, the bottom-right entry of the homography matrix, $\eta$, is non-zero. If $\eta$ becomes zero, this usually indicates a degenerate or pathological case in the motion estimation process, meaning the estimate has most likely failed. To handle these rare situations robustly, the codebase replaces the resulting homography with the identity matrix. Note that $\eta = 0$ most commonly arises during perspective removal—a scenario not addressed in our current work.
+In typical video frame-to-frame registration with real camera motion, the bottom-right entry of the homography matrix, $\eta$, is non-zero. If $\eta$ becomes zero, this usually indicates a degenerate or pathological case in the motion estimation process, meaning the estimate has most likely failed. To handle these rare situations robustly, the stabilizer codebase replaces the resulting homography with the identity matrix. Note that $\eta = 0$ most commonly arises during perspective removal—a scenario not addressed in our current work.
 
 We further decompose the homography matrix into fundamental parameters, listed below, each corresponding to one of the elementary matrices described above:
 
@@ -113,9 +113,9 @@ The homography decomposition, as implemented in `decomposeHomography` function d
     $$
     \begin{align*}
     p' &=& sR(p-c) + c + t = \\
-       &=& sRp - sRc + c + t = \\
-       &=& sRp + t + c - sRc = \\
-       &=& sRp + [t + (I-sR)c] = \\
+       &=& sRp - sRc + c + t \\
+       &=& sRp + t + c - sRc \\
+       &=& sRp + [t + (I-sR)c] \\
        &=& sRp + t^+ \\
     \end{align*}
     $$
@@ -127,12 +127,16 @@ The homography decomposition, as implemented in `decomposeHomography` function d
 This decomposition allows the stabilizer to independently manipulate rotation, translation, scaling, shear, and perspective components of the camera motion, enabling fine-grained stabilization modes.  For implementation reference, see the `decomposeHomography` and its inverse `composeHomography` functions defined in [Stabilizer class](https://github.com/joao-gueifao-924/Video-Stabilization/blob/main/include/stabilizer.hpp).
 
 
-### Modelling Camera Motion
+## Modelling Camera Motion
 
 In this section, we introduce the mathematical models used to describe camera motion between video frames. Understanding these models is essential for analyzing and stabilizing video sequences, as they provide a framework for representing how the camera moves and how this motion affects the appearance of the captured images.
 
 
-Let $I_t(p)$ denote the image captured by a standard 8-bit color camera at time $t \in \mathbb{Z}$. Here, $p = (x, y) \in \mathbb{Z}^2$ specifies the pixel coordinates, and $I_t(p): \mathbb{Z}^2 \to \lbrace0,1,\dots,255\rbrace^3$ returns the RGB color value at each pixel.
+Let $I_t(p)$ represent the image captured at time $t \in \mathbb{Z}$ by a standard camera with rectilinear (non-distorting) lenses, following the pinhole camera model. This video stabilization system is specifically designed for such cameras. It is not intended for use with other camera or lens types—such as omnidirectional or fisheye lenses—which are outside the scope of this work and may not function correctly with this system.
+
+Here, $p = (x, y) \in \mathbb{Z}^2$ represents the pixel coordinates, and $I_t(p): \mathbb{Z}^2 \to C^n$ gives the color intensity at each pixel. The value of $n$ depends on the type of camera: $n=1$ for monochrome (grayscale) images, and $n>1$ for color images—most commonly, $n=3$ for RGB. Typically, each color channel uses 8 bits, so $C = \{0, 1, \dots, 255\}$. 
+
+The stabilizer itself does not depend on the specific image format. Instead, it relies on external algorithms for finding sparse feature point correspondences, and abstracts away the details of how image data is represented.
 
 In image $I_{t+k}$, for $k \in \mathbb{Z}$, i.e., at an earlier or later time instant $t+k$, we perceive same visual contents but in different locations due to camera motion:
 
@@ -150,7 +154,14 @@ $$
 
 Here, $p_{t+k}$ represents the position of a point in the image at time $t+k$, and ${^{t+k}H_t}$ is the homography matrix that maps the point $p_t$ from time $t$ to its new location at time $t+k$. Warping image $I_t$ using ${^{t+k}H_t}$ will make it aligned with image $I_{t+k}$.
 
-It's important to note that using a homography to model camera motion is an approximation. This method works best when the scene is relatively flat or the camera is far from the scene. If the camera is close to objects with varying depths, the homography may not accurately capture the true motion, which can limit the effectiveness of video stabilization.
+It's important to note that using a homography to model camera motion is an approximation. This method works best when either:
+- the scene is relatively flat
+- the camera is far from the scene
+- the camera undergoes a pure rotation (i.e., no translation)
+
+When the camera moves (translates) while being close to objects at different depths, a homography may not accurately describe the true motion. This limitation can reduce the effectiveness of video stabilization. Homography is a global, parametric motion model—it assumes the same transformation applies everywhere in the image. In contrast, other motion models, such as non-parametric models and non-rigid registration, can better capture camera motion against the scene, especially in scenes with significant depth variation compared to camera distance.
+
+Despite these limitations, homographies (and their special cases, like rigid or affine transformations) are widely used for video stabilization because they provide a powerful albeit simple and intuitive framework based on linear algebra.
 
 A homography transformation has 8 degrees of freedom, allowing it to represent a wide range of image motions. However, this flexibility can lead to overfitting, especially when the transformation is estimated from noisy/inaccurate feature point matches.
 
@@ -164,13 +175,17 @@ where ${^{t+k}R}_t$ is a $2 \times 2$ rotation matrix and $ {^{t+k}t}_t$ is a $2
 
 This model has only 3 degrees of freedom—horizontal and vertical translation and in-plane rotation—which directly correspond to typical camera movements on the image plane. By reducing the number of parameters, the 2D rigid model is less sensitive to noise and produces more stable results.
 
-However, this simpler model also has its drawbacks. When the camera undergoes more complex movements—such as zooming or significant tilts and rotations out of the image plane—the 2D rigid transformation cannot accurately capture these motions. As a result, the video stabilization process, which relies on an appropriate motion model, may produce visible motion artifacts in the output video.
+However, this simpler model also has its drawbacks. When the camera undergoes other types of movement—such as zooming or significant tilts and rotations out of the image plane—the 2D rigid transformation cannot accurately capture these motions. As a result, the video stabilization process, which relies on an appropriate motion model, may produce visible motion artifacts in the output video.
 
-The 2D rigid (Euclidean) transformation is simply a specific case of the broader 2D homography. In this document, we use the term "homography" to describe all transformations between video frames—whether they are rigid (rotation and translation only) or more general (including scaling, shear, or perspective). When needed, we will clearly indicate the specific type of transformation being discussed.
+The 2D rigid (Euclidean) transformation is simply a special case of the broader 2D homography. In this document, we use the term "homography" to describe all transformations between video frames—whether they are rigid (rotation and translation only) or more general (including scaling, shear, or perspective). When needed, we will clearly indicate the special type of transformation being discussed.
 
-#### Transformation chaining
+### Transformation chaining
 
-Between successive video frames, the tranformations that align consecutive pairs of images can be chained. We start with mapping points in image $I_t$ to corresponding points in older images $I_{t-1}, I_{t-2}, I_{t-3}, \dots$:
+Transformations that align consecutive video frames can be combined—this process is called "chaining." By chaining transformations, we can map points from one frame to their corresponding locations in earlier or later frames in the video.
+
+This is possible because our motion model is global and parametric: each transformation can be represented as a matrix, and we can use standard matrix multiplication to combine them. When we multiply two homography matrices, the result is another homography, making it easy to express complex motion as a sequence of simpler steps.
+
+For example, to find where a point in image $I_t$ came from in previous frames $I_{t-1}, I_{t-2}, I_{t-3}, \dots$, we multiply the appropriate homography matrices together:
 
 $$
 \begin{align*}
@@ -197,7 +212,7 @@ $$\overset{\curvearrowleft}{\prod_{i=1}^{N}} \left( M_i \right) = M_N . M_{N-1}.
 
 denotes the product series of matrices that expands to the left (matrix product is not commutative—hence we must specify its order).
 
-We now proceed in a similar manner for mapping points in image $I_t$ to corresponding points in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
+We now proceed in a similar manner for mapping points in image $I_t$ to their corresponding locations in future images $I_{t+1}, I_{t+2}, I_{t+3}, \dots$:
 
 $$
 \begin{align*}
@@ -218,6 +233,8 @@ p_{t+r} &\sim {^{t+r}H}_{t+r-1}\,{^{t+r-1}H}_{t+r-2} \cdots {^{t+1}H}_t\, p_t \L
 \end{align*}
 $$
 
+## Smoothing camera motion
+
 To smooth camera motion, we apply a low-pass filter over the sequence of values for $p_t$, for varying $t$. A suitable candidate for such filter is the moving average, where we substitute the value for each $p_t$ by the average of the values within its temporal neighbourhood:
 
 $$
@@ -229,7 +246,7 @@ $$
 
 where $M$ and $N$ are the number of video frames to the left and right of the presented frame at time $t$, respectively.
 
-We can now express both $p_{t-l}$ and $p_{t+r}$ in terms of $p_t$ by applying the appropriate homography transformations (we change $=$ equality by $\sim$ proportionality):
+We can now express both $p_{t-l}$ and $p_{t+r}$ in terms of $p_t$ by applying the appropriate homography transformations (we change  equality, $=$, by proportionality, $\sim$):
 
 $$
 \bar{p_t} \sim \frac{1}{M+1+N} \left( \sum_{l=+1}^{+M} \overset{\curvearrowleft}{\prod_{i=1}^{l}}\left( {^{t-i}H}_{t-i+1} \right) p_t + p_t + \sum_{r=+1}^{+N} \overset{\curvearrowleft}{\prod_{i=1}^{r}}\left( {^{t+i}H}_{t+i-1} \right) p_t \right)
@@ -244,7 +261,9 @@ $$
 \end{align*}
 $$
 
-In order to smooth camera shake, we warp image $I_t$ using homography $Q_t$.
+where $I$ denotes the $3 \times 3$ identity matrix.
+
+In order to smooth camera shake, we warp image $I_t$ using homography $Q_t$ which is computed using the consecutive frame-to-frame homographies. The latter can be estimated using multiple alternative ways. 
 
 #### Global Smoothing
 For a frame at time t with temporal window size W:
